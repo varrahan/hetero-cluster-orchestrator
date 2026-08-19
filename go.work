@@ -1,0 +1,10 @@
+go 1.22.2
+
+use (
+	./src/shared
+	./src/slurm-operator
+	./src/dra-driver
+	./src/quantization-engine
+	./src/watchdog-daemon
+	./src/slurm-compute-node
+)
