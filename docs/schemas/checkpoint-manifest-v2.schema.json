@@ -1,0 +1,378 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestration.gputpu.io/schemas/checkpoint-manifest-v2.schema.json",
+  "title": "GPU/TPU/CPU Checkpoint Manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "checkpoint_version",
+    "run_id",
+    "global_step",
+    "epoch",
+    "created_at",
+    "metadata",
+    "world",
+    "tensors",
+    "state"
+  ],
+  "properties": {
+    "checkpoint_version": {
+      "const": 2
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "global_step": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "epoch": {
+      "type": "number",
+      "minimum": 0
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_parameters",
+        "canonical_dtype",
+        "model_id",
+        "model_schema_hash",
+        "dataset_id",
+        "container_image_digest",
+        "framework",
+        "framework_version",
+        "adapter_versions"
+      ],
+      "properties": {
+        "total_parameters": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "canonical_dtype": {
+          "$ref": "#/$defs/dtype"
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "model_schema_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "dataset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "container_image_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "framework": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "framework_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "adapter_versions": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size", "ranks"],
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ranks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rank", "hardware", "adapter"],
+            "properties": {
+              "rank": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "hardware": {
+                "enum": ["cpu", "nvidia-gpu", "opentpu-sim"]
+              },
+              "adapter": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      }
+    },
+    "tensors": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,511}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/tensor"
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "optimizer_metadata",
+        "scheduler",
+        "rng",
+        "data_cursor"
+      ],
+      "properties": {
+        "optimizer_metadata": {
+          "$ref": "#/$defs/artifact"
+        },
+        "scheduler": {
+          "type": "object"
+        },
+        "rng": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[0-9]+$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "data_cursor": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dtype": {
+      "enum": [
+        "float16",
+        "bfloat16",
+        "float32",
+        "float64",
+        "int8",
+        "uint8",
+        "int16",
+        "int32",
+        "int64",
+        "bool"
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "storagePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9][A-Za-z0-9._/-]{0,1023}$"
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storage_path", "byte_length", "sha256"],
+      "properties": {
+        "storage_path": {
+          "$ref": "#/$defs/storagePath"
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sliceRange": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "integer",
+          "minimum": 0
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "quantization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "scale",
+        "zero_point",
+        "rounding",
+        "clamp"
+      ],
+      "properties": {
+        "scheme": {
+          "const": "affine_int8"
+        },
+        "scale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "zero_point": {
+          "type": "integer",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "rounding": {
+          "const": "ties_to_even"
+        },
+        "clamp": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": -128
+            },
+            {
+              "const": 127
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "chunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chunk_id",
+        "storage_path",
+        "slice",
+        "shape",
+        "byte_offset",
+        "byte_length",
+        "sha256",
+        "writer_rank"
+      ],
+      "properties": {
+        "chunk_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "storage_path": {
+          "$ref": "#/$defs/storagePath"
+        },
+        "slice": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sliceRange"
+          }
+        },
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "byte_offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "writer_rank": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "tensor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "global_shape",
+        "canonical_dtype",
+        "byte_order",
+        "layout",
+        "chunks"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "model_parameter",
+            "model_buffer",
+            "optimizer_tensor",
+            "application_state"
+          ]
+        },
+        "global_shape": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "canonical_dtype": {
+          "$ref": "#/$defs/dtype"
+        },
+        "byte_order": {
+          "const": "little"
+        },
+        "layout": {
+          "const": "C"
+        },
+        "quantization": {
+          "$ref": "#/$defs/quantization"
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/chunk"
+          }
+        }
+      }
+    }
+  }
+}

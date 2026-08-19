@@ -1,0 +1,122 @@
+{
+  "checkpoint_version": 2,
+  "run_id": "run_hetero_v1",
+  "global_step": 12500,
+  "epoch": 4,
+  "created_at": "2026-08-19T18:00:00Z",
+  "metadata": {
+    "total_parameters": 4,
+    "canonical_dtype": "float32",
+    "model_id": "hetero-smoke-v1",
+    "model_schema_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "dataset_id": "smoke-dataset-v1",
+    "container_image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "framework": "pytorch",
+    "framework_version": "2.8.0",
+    "adapter_versions": {
+      "nvidia-gpu": "1.0.0"
+    }
+  },
+  "world": {
+    "size": 1,
+    "ranks": [
+      {
+        "rank": 0,
+        "hardware": "nvidia-gpu",
+        "adapter": "pytorch-raw"
+      }
+    ]
+  },
+  "tensors": {
+    "model.weight": {
+      "role": "model_parameter",
+      "global_shape": [
+        2,
+        2
+      ],
+      "canonical_dtype": "float32",
+      "byte_order": "little",
+      "layout": "C",
+      "chunks": [
+        {
+          "chunk_id": "model_weight_0000",
+          "storage_path": "shards/model_weight_0000.bin",
+          "slice": [
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              2
+            ]
+          ],
+          "shape": [
+            2,
+            2
+          ],
+          "byte_offset": 0,
+          "byte_length": 16,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "writer_rank": 0
+        }
+      ]
+    },
+    "optimizer.model.weight.momentum": {
+      "role": "optimizer_tensor",
+      "global_shape": [
+        2,
+        2
+      ],
+      "canonical_dtype": "float32",
+      "byte_order": "little",
+      "layout": "C",
+      "chunks": [
+        {
+          "chunk_id": "optimizer_momentum_0000",
+          "storage_path": "shards/optimizer_momentum_0000.bin",
+          "slice": [
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              2
+            ]
+          ],
+          "shape": [
+            2,
+            2
+          ],
+          "byte_offset": 0,
+          "byte_length": 16,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "writer_rank": 0
+        }
+      ]
+    }
+  },
+  "state": {
+    "optimizer_metadata": {
+      "storage_path": "optimizer_state.json",
+      "byte_length": 64,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "scheduler": {
+      "name": "cosine",
+      "last_step": 12500
+    },
+    "rng": {
+      "0": {
+        "storage_path": "rng/rank_00000.bin",
+        "byte_length": 8192,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "data_cursor": {
+      "shard": 18,
+      "sample": 2048
+    }
+  }
+}
