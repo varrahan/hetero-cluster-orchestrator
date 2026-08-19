@@ -1,0 +1,1 @@
+"""OpenTPU harness entrypoint scaffold."""

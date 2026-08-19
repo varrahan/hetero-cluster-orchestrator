@@ -1,0 +1,1 @@
+"""PyTorch coordinator entrypoint scaffold."""
