@@ -1,13 +1,14 @@
 # Repository Layout
 
-This is the authoritative source layout for implementation. The repository is
-currently documentation-only; the paths below describe where code will be added
-by the implementation phases.
+This is the authoritative source layout for implementation. The foundation
+contains compile-only entrypoints and package declarations; component behavior
+is added by the implementation phases.
 
 ```text
 heterogeneous-ai-orchestrator/
 ├── go.work
 ├── Makefile
+├── versions.mk
 ├── README.md
 ├── docs/
 └── src/
@@ -60,9 +61,10 @@ heterogeneous-ai-orchestrator/
         └── kustomization.yaml
 ```
 
-`myorg.com/ai-orch` is the working Go module prefix shown in design examples.
-Replace `myorg.com` once the project owns a permanent module domain; do it
-before publishing any Go module, not piecemeal afterward.
+The permanent Go module prefix is
+`github.com/varrahan/hetero-cluster-orchestrater/src`, matching the canonical
+Git repository and the physical module locations. A repository rename requires
+an atomic update to every module and import path.
 
 ## Root workspace
 
@@ -76,15 +78,18 @@ The root `Makefile` delegates a small common command set:
 - `make test` runs module tests and Python tests;
 - `make generate` regenerates CRDs, deepcopy code, and RBAC;
 - `make manifests` renders Kustomize output without applying it; and
-- `make verify` checks generated-file drift, formatting, schemas, and docs.
+- `make verify` checks version pins, generated-file drift, formatting, builds,
+  tests, vet, JSON syntax, and rendered manifests.
 
 It does not hide module-specific toolchains or implement a second build system.
+Exact Go, Kubernetes, Slurm, and OpenTPU revisions live in the root
+`versions.mk`; floating tags are not release inputs.
 
 ## Module ownership
 
 ### `src/shared`
 
-Module: `myorg.com/ai-orch/shared`
+Module: `github.com/varrahan/hetero-cluster-orchestrater/src/shared`
 
 Only genuinely cross-cutting protocol code belongs here:
 
@@ -102,7 +107,7 @@ manifest or alter objects under `shards/`.
 
 ### `src/slurm-operator`
 
-Module: `myorg.com/ai-orch/slurm-operator`
+Module: `github.com/varrahan/hetero-cluster-orchestrater/src/slurm-operator`
 
 This is the Kubernetes control plane. `api/v1alpha1` contains the
 `HeterogeneousCluster` API, generated deepcopy code, and group registration.
@@ -119,7 +124,7 @@ operator internals.
 
 ### `src/dra-driver`
 
-Module: `myorg.com/ai-orch/dra-driver`
+Module: `github.com/varrahan/hetero-cluster-orchestrater/src/dra-driver`
 
 One deployable driver owns several provider implementations under
 `internal/providers`: NVIDIA, CPU, NUMA memory, and OpenTPU simulation. Shared
@@ -132,7 +137,7 @@ privilege requirements make a split necessary.
 
 ### `src/quantization-engine`
 
-Module: `myorg.com/ai-orch/quant-engine`
+Module: `github.com/varrahan/hetero-cluster-orchestrater/src/quantization-engine`
 
 This node-wide DaemonSet performs canonical FP32/BF16 to OpenTPU INT8 conversion
 and the inverse operation. It uses `shared/ipc` and `shared/storage` and exposes
@@ -148,7 +153,7 @@ returns a hashable result to `checkpoint-flusher`.
 
 ### `src/watchdog-daemon`
 
-Module: `myorg.com/ai-orch/watchdog`
+Module: `github.com/varrahan/hetero-cluster-orchestrater/src/watchdog-daemon`
 
 This is the privileged companion to Node Problem Detector. It executes only the
 fixed health-support, inventory, reboot, and verification operations defined by
@@ -160,7 +165,7 @@ hardware condition; the watchdog is not a replacement health framework.
 
 ### `src/slurm-compute-node`
 
-Module: `myorg.com/ai-orch/slurm-compute`
+Module: `github.com/varrahan/hetero-cluster-orchestrater/src/slurm-compute-node`
 
 The image contains `slurmd`, MUNGE, and three focused binaries:
 

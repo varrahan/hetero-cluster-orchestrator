@@ -1,7 +1,8 @@
 # Heterogeneous GPU/TPU/CPU Orchestration
 
-> **Status:** architecture and implementation specification only. No deployable
-> components exist in this repository yet.
+> **Status:** foundation complete. Version pins, Go module identities, build
+> targets, and compile-only component entrypoints exist; no component behavior
+> is implemented yet.
 
 This project defines a Slurm-on-Kubernetes platform for heterogeneous compute:
 physical NVIDIA GPUs, physical CPUs, and simulated OpenTPU accelerators. Users
@@ -92,12 +93,20 @@ allocates the slice before `slurmd` registers it with Slurm.
 
 ## Platform baseline
 
-- Kubernetes 1.35 or newer, using stable APIs and feature states only.
-- Slurm 25.11 or newer with `select/cons_tres`, configless operation, dynamic
+- Go 1.26.7.
+- Kubernetes 1.35.6, using stable APIs and feature states only.
+- Slurm 25.11.7 with `select/cons_tres`, configless operation, dynamic
   nodes, MUNGE authentication, and JWT support for REST clients.
+- OpenTPU revision `ca5d381c93752a504e8de1fa10c9d51649853c70`.
 - A CDI/NRI-capable Linux container runtime.
 - Dedicated compute nodes, an external TLS-enabled MariaDB service, an external
   TLS-enabled MinIO service, and RWX storage for Slurm controller state.
+
+[`versions.mk`](versions.mk) is authoritative for these software pins. Run
+`make versions` to print them, `make build` or `make test` for all modules, and
+`make verify` for the complete local verification suite. `make generate` and
+`make manifests` expose generation and Kustomize rendering without applying
+anything to a cluster.
 
 The design builds on Kubernetes
 [Dynamic Resource Allocation](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/),

@@ -14,10 +14,22 @@ framework-native. Node Problem Detector publishes the raw health condition;
 this project adds probe configuration and the narrowly scoped
 `watchdog-daemon`.
 
-Create source directories only when their phase needs them. The root `go.work`
-ties together the six Go modules in the [repository layout](repository-layout.md),
-and the root `Makefile` delegates build, test, generation, manifest rendering,
-and verification without hiding module-specific commands.
+The root `go.work` ties together the six Go modules in the
+[repository layout](repository-layout.md), and the root `Makefile` delegates
+build, test, generation, manifest rendering, and verification without hiding
+module-specific commands. Add packages only when their phase needs them.
+
+## Phase 0: Foundation
+
+The completed foundation pins Go 1.26.7, Kubernetes 1.35.6, Slurm 25.11.7,
+and OpenTPU revision `ca5d381c93752a504e8de1fa10c9d51649853c70` in
+`versions.mk`. All Go modules use the permanent
+`github.com/varrahan/hetero-cluster-orchestrater/src` prefix and build and test
+independently through the root Makefile.
+
+Exit criteria: `make build`, `make test`, `make generate`, `make manifests`,
+and `make verify` succeed from a clean checkout without implementing component
+behavior.
 
 ## Phase 1: Slurm control plane
 

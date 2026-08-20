@@ -165,10 +165,10 @@ metadata:
   name: research
   namespace: slurm-system
 spec:
-  slurmVersion: "25.11"
+  slurmVersion: "25.11.7"
   controlPlane:
     controllers:
-      image: registry.example/slurm:25.11
+      image: registry.example/slurm:25.11.7
       replicas: 2
       stateSaveClaim: slurm-state-rwx
     rest:
