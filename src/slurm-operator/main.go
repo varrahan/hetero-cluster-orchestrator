@@ -1,3 +1,3 @@
 package main
 
-// Implementation intentionally deferred.
+func main() {}
