@@ -16,6 +16,7 @@ Makefile recipes or project scripts.
 
 - Phase 0 (foundation) is complete; component entrypoints still have no runtime
   behavior. Phase 1 is next.
+- Delivery status and task IDs are authoritative in `docs/progress.md`.
 - Pins: Go 1.26.7, Kubernetes 1.35.6, Slurm 25.11.7, OpenTPU
   `ca5d381c93752a504e8de1fa10c9d51649853c70`.
 - Module prefix: `github.com/varrahan/hetero-cluster-orchestrater/src`.
@@ -97,6 +98,8 @@ workers.
   generated output.
 - Update the relevant doc when changing a public contract. Update this file
   only when its stable snapshot, boundaries, phase, or commands change.
+- Update `docs/progress.md` only after the relevant implementation and checks
+  pass; partial work remains unchecked.
 
 ## Commands
 
@@ -112,6 +115,7 @@ Use the narrowest targeted test while iterating, then `make verify` once.
 
 ## Documentation routing
 
+- Delivery status and the active phase checklist: `docs/progress.md`.
 - Public API, sources of truth, security boundaries: `docs/architecture.md`.
 - Directory/module ownership: `docs/repository-layout.md`.
 - DRA, NUMA, claims, GRES translation: `docs/scheduling-and-resources.md`.
@@ -119,5 +123,7 @@ Use the narrowest targeted test while iterating, then `make verify` once.
 - Conditions, taints, drain/requeue/reboot: `docs/failure-recovery.md`.
 - Phase scope and acceptance tests: `docs/implementation-plan.md`.
 
-Open none of these by default. Use `rg` for the needed heading and read only
-that section unless the task changes the document's overall contract.
+For implementation work, read only the active phase section in
+`docs/progress.md`. Open none of the design docs by default. Use `rg` for the
+needed heading and read only that section unless the task changes the
+document's overall contract.

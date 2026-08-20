@@ -1,5 +1,8 @@
 # Implementation Plan
 
+Delivery status is tracked in [Implementation Progress](progress.md). This
+document defines scope and acceptance behavior, not completion state.
+
 ## Delivery principles
 
 Build the smallest complete vertical slices. Kubernetes remains responsible for
