@@ -112,9 +112,10 @@ providers, or the RWX storage system.
 
 Daemon-to-daemon communication uses `auth/munge`. Operator REST traffic uses a
 dedicated, short-lived JWT with the minimum Slurm privileges needed to inspect
-jobs and manage dynamic nodes. MUNGE keys are mounted only into Slurm daemons;
-JWT signing material is mounted only into the REST trust boundary and its
-trusted token issuer.
+jobs and manage dynamic nodes. MUNGE keys are mounted only into Slurm daemons.
+JWT signing material is available only to the `slurmctld` and `slurmdbd`
+verifiers and the operator token issuer; `slurmrestd` forwards request tokens
+without mounting the key.
 
 ### DRA and node services
 
@@ -209,10 +210,16 @@ spec:
     verificationTimeout: 2m
 ```
 
-The admission webhook rejects configurations that cannot be made safe, such as
-controller replicas other than two, a missing RWX state claim, non-integral
-memory units, duplicate Slurm GRES mappings, or recovery enabled without a
-verifier profile.
+Native CRD admission validation rejects static inconsistencies such as
+controller replicas other than two, fractional memory units, duplicate pool
+partitions, or recovery enabled without a verifier profile. Before creating
+workloads, the operator also rejects duplicate cross-pool Slurm GRES mappings
+and a missing or non-RWX state claim. These failures are reported through the
+control-plane and accounting conditions.
+
+The referenced MUNGE Secret contains `munge.key`; the JWT Secret contains
+`jwt_hs256.key` with at least 32 bytes. The external MariaDB Secret contains
+`host`, `port`, `database`, `username`, and `password`.
 
 Status reports `ControlPlaneReady`, `AccountingReady`, `WorkersReady`,
 `CheckpointStoreReachable`, and `DegradedNodes`, plus per-pool ready, pending,

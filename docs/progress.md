@@ -21,7 +21,7 @@ whether that behavior has been implemented and verified.
 | Phase | Status |
 | --- | --- |
 | 0 — Foundation | Complete |
-| 1 — Slurm control plane | Not started |
+| 1 — Slurm control plane | Complete |
 | 2 — Resource allocation and elastic workers | Not started |
 | 3 — Checkpoint v2 | Not started |
 | 4 — Fault recovery | Not started |
@@ -52,51 +52,51 @@ Design: [architecture](architecture.md) and
 
 ### API and operator
 
-- [ ] `P1-01` Define and register the namespaced `HeterogeneousCluster`
+- [x] `P1-01` Define and register the namespaced `HeterogeneousCluster`
   `v1alpha1` API.
-- [ ] `P1-02` Implement defaults and admission validation for unsafe or
+- [x] `P1-02` Implement defaults and admission validation for unsafe or
   internally inconsistent configurations.
-- [ ] `P1-03` Implement status conditions and observed-generation reporting.
-- [ ] `P1-04` Generate deepcopy code, CRD manifests, and RBAC.
-- [ ] `P1-05` Start a leader-elected controller-runtime manager with health and
+- [x] `P1-03` Implement status conditions and observed-generation reporting.
+- [x] `P1-04` Generate deepcopy code, CRD manifests, and RBAC.
+- [x] `P1-05` Start a leader-elected controller-runtime manager with health and
   readiness probes.
-- [ ] `P1-06` Reconcile owned resources idempotently across create, update,
+- [x] `P1-06` Reconcile owned resources idempotently across create, update,
   partial deletion, and operator restart.
 
 ### Slurm services and configuration
 
-- [ ] `P1-07` Render deterministic `slurm.conf`, `gres.conf` inputs, and
+- [x] `P1-07` Render deterministic `slurm.conf`, `gres.conf` inputs, and
   configless service configuration with `select/cons_tres` and dynamic-node
   partitions.
-- [ ] `P1-08` Reconcile primary and backup `slurmctld` with stable identities,
+- [x] `P1-08` Reconcile primary and backup `slurmctld` with stable identities,
   shared RWX state, required anti-affinity, and a PDB.
-- [ ] `P1-09` Reconcile two `slurmrestd` replicas behind a stable ClusterIP
+- [x] `P1-09` Reconcile two `slurmrestd` replicas behind a stable ClusterIP
   Service.
-- [ ] `P1-10` Reconcile one restartable `slurmdbd` connected to external
+- [x] `P1-10` Reconcile one restartable `slurmdbd` connected to external
   MariaDB and initialize accounting safely.
-- [ ] `P1-11` Reconcile MUNGE-enabled login services supporting native Slurm
+- [x] `P1-11` Reconcile MUNGE-enabled login services supporting native Slurm
   clients.
-- [ ] `P1-12` Mount referenced MUNGE and JWT Secrets only inside their defined
+- [x] `P1-12` Mount referenced MUNGE and JWT Secrets only inside their defined
   trust boundaries and prevent secret material from reaching workers or logs.
-- [ ] `P1-13` Implement the typed, least-privilege JWT `slurmrestd` client and
+- [x] `P1-13` Implement the typed, least-privilege JWT `slurmrestd` client and
   pending-job polling needed by later phases.
-- [ ] `P1-14` Add deployable operator/control-plane manifests and least-privilege
+- [x] `P1-14` Add deployable operator/control-plane manifests and least-privilege
   Phase 1 RBAC.
 
 ### Phase 1 tests and exit gates
 
-- [ ] `P1-T01` Test CRD defaults, validation, status, and Slurm configuration
+- [x] `P1-T01` Test CRD defaults, validation, status, and Slurm configuration
   rendering.
-- [ ] `P1-T02` Test reconciliation create, update, restart, and partial deletion
+- [x] `P1-T02` Test reconciliation create, update, restart, and partial deletion
   with envtest and fake Slurm/accounting endpoints.
-- [ ] `P1-G01` Native `sbatch` accepts a job and `squeue` observes it without
+- [x] `P1-G01` Native `sbatch` accepts a job and `squeue` observes it without
   compute workers.
-- [ ] `P1-G02` Accounting records and retrieves submitted job state.
-- [ ] `P1-G03` JWT REST polling observes the same pending job state.
-- [ ] `P1-G04` Backup `slurmctld` assumes control without losing pending jobs.
-- [ ] `P1-G05` Operator restart reconstructs desired state without duplicate or
+- [x] `P1-G02` Accounting records and retrieves submitted job state.
+- [x] `P1-G03` JWT REST polling observes the same pending job state.
+- [x] `P1-G04` Backup `slurmctld` assumes control without losing pending jobs.
+- [x] `P1-G05` Operator restart reconstructs desired state without duplicate or
   destructive actions.
-- [ ] `P1-G06` `make verify` succeeds with all generated files current.
+- [x] `P1-G06` `make verify` succeeds with all generated files current.
 
 ## Phase 2 — Resource allocation and elastic workers
 

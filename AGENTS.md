@@ -14,8 +14,7 @@ Makefile recipes or project scripts.
 
 ## Current snapshot
 
-- Phase 0 (foundation) is complete; component entrypoints still have no runtime
-  behavior. Phase 1 is next.
+- Phases 0 and 1 are complete. Phase 2 allocation and elastic workers are next.
 - Delivery status and task IDs are authoritative in `docs/progress.md`.
 - Pins: Go 1.26.7, Kubernetes 1.35.6, Slurm 25.11.7, OpenTPU
   `ca5d381c93752a504e8de1fa10c9d51649853c70`.
@@ -65,7 +64,7 @@ Kubernetes/Slurm APIs, Unix sockets, or versioned files across processes.
 ## Implementation order
 
 0. Foundation — complete.
-1. Slurm control plane.
+1. Slurm control plane — complete.
 2. Allocation and elastic workers: CPU/NUMA first, then NVIDIA, OpenTPU, mixed.
 3. Checkpoint v2 and restart.
 4. Fault isolation, drain, requeue, reboot, and verification.
@@ -74,7 +73,7 @@ Kubernetes/Slurm APIs, Unix sockets, or versioned files across processes.
 Implement only the active phase and the smallest complete vertical slice.
 Create packages and add dependencies only when that slice uses them.
 
-### Active Phase 1 exit contract
+### Completed Phase 1 exit contract
 
 Implement the `HeterogeneousCluster` API and leader-elected operator managing
 two RWX-backed `slurmctld` instances, replicated `slurmrestd`, one `slurmdbd`,
@@ -108,6 +107,7 @@ workers.
 - `make test`: test every module independently plus Python syntax.
 - `make generate`: run all generators.
 - `make manifests`: render Kustomize without applying it.
+- `make phase1-e2e`: run the disposable kind-based Phase 1 exit gates.
 - `make verify`: version, drift, format, build, test, vet, JSON, and manifest
   checks. Run it before handoff.
 

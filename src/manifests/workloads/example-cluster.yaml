@@ -1,0 +1,35 @@
+apiVersion: orchestration.gputpu.io/v1alpha1
+kind: HeterogeneousCluster
+metadata:
+  name: research
+  namespace: slurm-system
+spec:
+  slurmVersion: "25.11.7"
+  controlPlane:
+    controllers:
+      image: slurm-control-plane:25.11.7
+      replicas: 2
+      stateSaveClaim: slurm-state-rwx
+    rest:
+      replicas: 2
+    accounting:
+      databaseSecretRef: slurm-mariadb
+    login:
+      replicas: 1
+  authentication:
+    mungeKeySecretRef: slurm-munge
+    jwtKeySecretRef: slurm-jwt
+  workerPools:
+  - name: strict
+    partition: compute
+    nodeSelector:
+      orchestration.gputpu.io/compute-node: "true"
+    memoryUnit: 1Gi
+    scaling:
+      minReady: 0
+      maxWorkers: 32
+      idleTimeout: 5m
+    profiles:
+    - name: rtx-4050
+      gres: gpu:rtx_4050
+      deviceClassName: nvidia.gputpu.io/gpu

@@ -1,8 +1,7 @@
 # Heterogeneous GPU/TPU/CPU Orchestration
 
-> **Status:** foundation complete. Version pins, Go module identities, build
-> targets, and compile-only component entrypoints exist; no component behavior
-> is implemented yet.
+> **Status:** Phase 1 control-plane implementation and live kind exit gates pass.
+> Resource allocation and elastic workers begin in Phase 2.
 
 This project defines a Slurm-on-Kubernetes platform for heterogeneous compute:
 physical NVIDIA GPUs, physical CPUs, and simulated OpenTPU accelerators. Users
@@ -83,6 +82,7 @@ allocates the slice before `slurmd` registers it with Slurm.
 
 ## Documentation
 
+- [Implementation progress](docs/progress.md)
 - [Architecture](docs/architecture.md)
 - [Repository layout](docs/repository-layout.md)
 - [Scheduling and resources](docs/scheduling-and-resources.md)
@@ -106,7 +106,7 @@ allocates the slice before `slurmd` registers it with Slurm.
 `make versions` to print them, `make build` or `make test` for all modules, and
 `make verify` for the complete local verification suite. `make generate` and
 `make manifests` expose generation and Kustomize rendering without applying
-anything to a cluster.
+anything to a cluster. `make phase1-e2e` runs the disposable live kind gates.
 
 The design builds on Kubernetes
 [Dynamic Resource Allocation](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/),
