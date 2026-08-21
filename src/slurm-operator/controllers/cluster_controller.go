@@ -13,6 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	resourceapi "k8s.io/api/resource/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,26 +39,50 @@ const (
 	jwtKey               = "jwt_hs256.key"
 )
 
-// +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters/status,verbs=get;update
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaims,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update
 
 type ClusterReconciler struct {
 	client.Client
-	Reader      client.Reader
-	Scheme      *runtime.Scheme
-	HTTPClient  *http.Client
-	RESTBaseURL func(*orchestrationv1alpha1.HeterogeneousCluster) string
+	Reader               client.Reader
+	Scheme               *runtime.Scheme
+	HTTPClient           *http.Client
+	RESTBaseURL          func(*orchestrationv1alpha1.HeterogeneousCluster) string
+	Recorder             record.EventRecorder
+	WorkerImage          string
+	WorkerMemoryHeadroom int64
 }
 
 func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	var cluster orchestrationv1alpha1.HeterogeneousCluster
 	if err := r.Get(ctx, request.NamespacedName, &cluster); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	if !cluster.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(&cluster, clusterWorkerFinalizer) {
+			return ctrl.Result{}, nil
+		}
+		key, err := r.jwtKey(ctx, &cluster)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		restClient, err := slurm.NewClient(r.restURL(&cluster), key, r.HTTPClient)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		done, err := r.cleanupClusterWorkers(ctx, &cluster, restClient)
+		if err != nil || !done {
+			return ctrl.Result{RequeueAfter: requeueInterval}, err
+		}
+		controllerutil.RemoveFinalizer(&cluster, clusterWorkerFinalizer)
+		return ctrl.Result{}, r.Update(ctx, &cluster)
 	}
 
 	if len(cluster.Name) > 50 || len(validation.IsDNS1035Label(cluster.Name)) != 0 {
@@ -72,17 +98,22 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if err != nil {
 		return r.notReady(ctx, &cluster, "JWTUnavailable", err.Error(), nil)
 	}
+	if controllerutil.AddFinalizer(&cluster, clusterWorkerFinalizer) {
+		if err := r.Update(ctx, &cluster); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 
 	files := render.Slurm(&cluster)
-	configHash := hash(files.SlurmConf, files.GRESConf)
+	configHash := fmt.Sprintf("%x", sha256.Sum256([]byte(files.SlurmConf+"\x00"+files.GRESConf+"\x00"+files.CgroupConf)))
 	for _, reconcile := range []func() error{
 		func() error { return r.reconcileConfig(ctx, &cluster, files) },
 		func() error { return r.reconcileControllerService(ctx, &cluster) },
 		func() error { return r.reconcileControllers(ctx, &cluster, configHash) },
 		func() error { return r.reconcileControllerPDB(ctx, &cluster) },
-		func() error { return r.reconcileDatabaseService(ctx, &cluster) },
+		func() error { return r.reconcileService(ctx, &cluster, "slurmdbd", render.SlurmdbdPort) },
 		func() error { return r.reconcileDatabase(ctx, &cluster, configHash) },
-		func() error { return r.reconcileRESTService(ctx, &cluster) },
+		func() error { return r.reconcileService(ctx, &cluster, "slurmrestd", render.SlurmRESTPort) },
 		func() error { return r.reconcileREST(ctx, &cluster, configHash) },
 		func() error { return r.reconcileLogin(ctx, &cluster, configHash) },
 	} {
@@ -99,25 +130,35 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return r.notReady(ctx, &cluster, "ResourcesNotReady", "Slurm control-plane workloads are not ready", nil)
 	}
 
-	restClient, err := slurm.NewClient(r.restURL(&cluster), "slurm", key, r.HTTPClient)
+	restClient, err := slurm.NewClient(r.restURL(&cluster), key, r.HTTPClient)
 	if err != nil {
 		return r.notReady(ctx, &cluster, "JWTUnavailable", err.Error(), nil)
 	}
-	if _, err := restClient.PendingJobs(ctx); err != nil {
+	pendingJobs, err := restClient.PendingJobs(ctx)
+	if err != nil {
 		return r.notReady(ctx, &cluster, "RESTUnavailable", err.Error(), nil)
 	}
 	accountingError := restClient.AccountingReady(ctx, cluster.Name)
+	workers, err := r.reconcileWorkers(ctx, &cluster, restClient, pendingJobs)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	status := cluster.Status.DeepCopy()
 	status.ObservedGeneration = cluster.Generation
-	status.WorkerPools = poolStatus(cluster.Spec.WorkerPools)
+	status.WorkerPools = workers.Status
 	setCondition(status, orchestrationv1alpha1.ConditionControlPlaneReady, metav1.ConditionTrue, "Ready", "Slurm controllers, REST, and login are ready", cluster.Generation)
 	if accountingError == nil {
 		setCondition(status, orchestrationv1alpha1.ConditionAccountingReady, metav1.ConditionTrue, "Ready", "Slurm accounting is ready", cluster.Generation)
 	} else {
 		setCondition(status, orchestrationv1alpha1.ConditionAccountingReady, metav1.ConditionFalse, "AccountingUnavailable", accountingError.Error(), cluster.Generation)
 	}
-	setPhaseOneConditions(status, cluster.Generation)
+	if workers.Ready {
+		setCondition(status, orchestrationv1alpha1.ConditionWorkersReady, metav1.ConditionTrue, workers.Reason, workers.Message, cluster.Generation)
+	} else {
+		setCondition(status, orchestrationv1alpha1.ConditionWorkersReady, metav1.ConditionFalse, workers.Reason, workers.Message, cluster.Generation)
+	}
+	setLaterPhaseConditions(status, cluster.Generation)
 	if err := r.updateStatus(ctx, &cluster, status); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -150,6 +191,8 @@ func (r *ClusterReconciler) SetupWithManager(manager ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Service{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
+		Owns(&corev1.Pod{}).
+		Owns(&resourceapi.ResourceClaim{}).
 		Complete(r)
 }
 
@@ -172,7 +215,7 @@ func (r *ClusterReconciler) reconcileConfig(ctx context.Context, cluster *orches
 	object := &corev1.ConfigMap{ObjectMeta: objectMeta(cluster, "config")}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		object.Labels = labels(cluster, "config")
-		object.Data = map[string]string{"slurm.conf": files.SlurmConf, "gres.conf": files.GRESConf}
+		object.Data = map[string]string{"slurm.conf": files.SlurmConf, "gres.conf": files.GRESConf, "cgroup.conf": files.CgroupConf}
 		return controllerutil.SetControllerReference(cluster, object, r.Scheme)
 	})
 	return err
@@ -251,14 +294,6 @@ func (r *ClusterReconciler) reconcileControllerPDB(ctx context.Context, cluster 
 		return controllerutil.SetControllerReference(cluster, object, r.Scheme)
 	})
 	return err
-}
-
-func (r *ClusterReconciler) reconcileDatabaseService(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
-	return r.reconcileService(ctx, cluster, "slurmdbd", render.SlurmdbdPort)
-}
-
-func (r *ClusterReconciler) reconcileRESTService(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
-	return r.reconcileService(ctx, cluster, "slurmrestd", render.SlurmRESTPort)
 }
 
 func (r *ClusterReconciler) reconcileService(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, component string, port int32) error {
@@ -402,7 +437,8 @@ func (r *ClusterReconciler) notReady(ctx context.Context, cluster *orchestration
 	status.WorkerPools = poolStatus(cluster.Spec.WorkerPools)
 	setCondition(status, orchestrationv1alpha1.ConditionControlPlaneReady, metav1.ConditionFalse, reason, message, cluster.Generation)
 	setCondition(status, orchestrationv1alpha1.ConditionAccountingReady, metav1.ConditionFalse, reason, message, cluster.Generation)
-	setPhaseOneConditions(status, cluster.Generation)
+	setCondition(status, orchestrationv1alpha1.ConditionWorkersReady, metav1.ConditionUnknown, reason, "worker capacity is preserved until the control plane recovers", cluster.Generation)
+	setLaterPhaseConditions(status, cluster.Generation)
 	if err := r.updateStatus(ctx, cluster, status); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -430,9 +466,8 @@ func setCondition(status *orchestrationv1alpha1.HeterogeneousClusterStatus, cond
 	})
 }
 
-func setPhaseOneConditions(status *orchestrationv1alpha1.HeterogeneousClusterStatus, generation int64) {
+func setLaterPhaseConditions(status *orchestrationv1alpha1.HeterogeneousClusterStatus, generation int64) {
 	for _, conditionType := range []string{
-		orchestrationv1alpha1.ConditionWorkersReady,
 		orchestrationv1alpha1.ConditionCheckpointStoreReachable,
 		orchestrationv1alpha1.ConditionDegradedNodes,
 	} {
@@ -464,10 +499,6 @@ func labels(cluster *orchestrationv1alpha1.HeterogeneousCluster, component strin
 		"app.kubernetes.io/component":  component,
 		"app.kubernetes.io/managed-by": "slurm-operator",
 	}
-}
-
-func hash(values ...string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprint(values))))
 }
 
 func commonVolumes(cluster *orchestrationv1alpha1.HeterogeneousCluster) []corev1.Volume {

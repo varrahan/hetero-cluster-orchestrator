@@ -97,7 +97,7 @@ func TestValidateSpecRejectsCrossPoolGRESConflict(t *testing.T) {
 	spec.WorkerPools = append(spec.WorkerPools, orchestrationv1alpha1.WorkerPoolSpec{
 		Name: "other", Partition: "other", MemoryUnit: "1Gi",
 		Scaling:  orchestrationv1alpha1.ScalingSpec{MaxWorkers: 1, IdleTimeout: metav1.Duration{Duration: time.Minute}},
-		Profiles: []orchestrationv1alpha1.WorkerProfile{{Name: "duplicate", Gres: "gpu:rtx_4050", DeviceClassName: "nvidia.gputpu.io/gpu"}},
+		Profiles: []orchestrationv1alpha1.WorkerProfile{{Name: "duplicate", Gres: "gpu:rtx_4050", DeviceClassName: "nvidia.orchestration.gputpu.io"}},
 	})
 	if err := validateSpec(spec); err == nil {
 		t.Fatal("duplicate cross-pool GRES mapping accepted")
@@ -283,7 +283,7 @@ func validCluster(namespace string) *orchestrationv1alpha1.HeterogeneousCluster 
 			WorkerPools: []orchestrationv1alpha1.WorkerPoolSpec{{
 				Name: "strict", Partition: "compute", MemoryUnit: "1Gi",
 				Scaling:  orchestrationv1alpha1.ScalingSpec{MaxWorkers: 4, IdleTimeout: metav1.Duration{Duration: 5 * time.Minute}},
-				Profiles: []orchestrationv1alpha1.WorkerProfile{{Name: "gpu", Gres: "gpu:rtx_4050", DeviceClassName: "nvidia.gputpu.io/gpu"}},
+				Profiles: []orchestrationv1alpha1.WorkerProfile{{Name: "gpu", Gres: "gpu:rtx_4050", DeviceClassName: "nvidia.orchestration.gputpu.io"}},
 			}},
 		},
 	}

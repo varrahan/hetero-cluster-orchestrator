@@ -126,7 +126,7 @@ type WorkerProfile struct {
 	// +kubebuilder:validation:Pattern=`^(gpu|tpu):[a-z0-9_]+$`
 	// +kubebuilder:validation:MaxLength=64
 	Gres string `json:"gres"`
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?/[a-z0-9]([a-z0-9._-]*[a-z0-9])?$`
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`
 	// +kubebuilder:validation:MaxLength=253
 	DeviceClassName string `json:"deviceClassName"`
 }

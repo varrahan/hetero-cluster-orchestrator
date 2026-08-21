@@ -27,8 +27,10 @@ func TestSlurm(t *testing.T) {
 		"MaxNodeCount=6\n",
 		"GresTypes=gpu,tpu\n",
 		"AccountingStorageTRES=gres/gpu,gres/tpu\n",
-		"PartitionName=a-gpu Nodes=ALL State=UP Default=YES\n",
-		"PartitionName=z-tpu Nodes=ALL State=UP\n",
+		"TaskPlugin=task/cgroup,task/affinity\n",
+		"NodeSet=pool_gpu Feature=pool_gpu\n",
+		"PartitionName=a-gpu Nodes=pool_gpu State=UP Default=YES\n",
+		"PartitionName=z-tpu Nodes=pool_tpu State=UP\n",
 	} {
 		if !strings.Contains(files.SlurmConf, expected) {
 			t.Errorf("slurm.conf missing %q\n%s", expected, files.SlurmConf)
@@ -38,6 +40,9 @@ func TestSlurm(t *testing.T) {
 		t.Fatal("partitions are not sorted")
 	}
 	if files.GRESConf != "" {
-		t.Fatalf("Phase 1 gres.conf = %q, want empty", files.GRESConf)
+		t.Fatalf("controller gres.conf = %q, want empty", files.GRESConf)
+	}
+	if !strings.Contains(files.CgroupConf, "ConstrainDevices=yes") {
+		t.Fatalf("cgroup.conf = %q", files.CgroupConf)
 	}
 }

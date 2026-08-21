@@ -18,8 +18,9 @@ const (
 )
 
 type SlurmFiles struct {
-	SlurmConf string
-	GRESConf  string
+	SlurmConf  string
+	GRESConf   string
+	CgroupConf string
 }
 
 func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
@@ -57,6 +58,8 @@ func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 	line("CredType", "cred/munge")
 	line("SelectType", "select/cons_tres")
 	line("SelectTypeParameters", "CR_Core_Memory")
+	line("TaskPlugin", "task/cgroup,task/affinity")
+	line("ProctrackType", "proctrack/cgroup")
 	line("SchedulerType", "sched/backfill")
 	line("SlurmctldParameters", "enable_configless,reconfig_on_restart")
 	line("AccountingStorageType", "accounting_storage/slurmdbd")
@@ -75,12 +78,18 @@ func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 		line("AccountingStorageTRES", strings.Join(tres, ","))
 	}
 	for i, pool := range pools {
-		value := "Nodes=ALL State=UP"
+		nodeSet := "pool_" + strings.ReplaceAll(pool.Name, "-", "_")
+		line("NodeSet", nodeSet+" Feature="+nodeSet)
+		value := "Nodes=" + nodeSet + " State=UP"
 		if i == 0 {
 			value += " Default=YES"
 		}
 		line("PartitionName", pool.Partition+" "+value)
 	}
 
-	return SlurmFiles{SlurmConf: b.String(), GRESConf: ""}
+	return SlurmFiles{
+		SlurmConf:  b.String(),
+		GRESConf:   "",
+		CgroupConf: "CgroupPlugin=autodetect\nConstrainCores=yes\nConstrainRAMSpace=yes\nConstrainDevices=yes\n",
+	}
 }

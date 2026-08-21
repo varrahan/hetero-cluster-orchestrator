@@ -31,13 +31,20 @@ func TestClient(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jobs":[{"job_id":7,"het_job_id":{"number":0,"set":false,"infinite":false},"partition":"compute","state":{"current":["PENDING"]},"state_reason":"Resources"},{"job_id":8,"state":{"current":["RUNNING"]}}]}`))
 		case "/slurmdb/v0.0.44/clusters/":
 			_, _ = w.Write([]byte(`{"clusters":[{"name":"research"}]}`))
+		case "/slurm/v0.0.44/nodes/":
+			_, _ = w.Write([]byte(`{"nodes":[{"name":"worker-a","state":["IDLE"],"alloc_cpus":{"number":0,"set":true,"infinite":false},"alloc_memory":0,"partitions":["compute"]}]}`))
+		case "/slurm/v0.0.44/node/worker-a":
+			if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+				t.Errorf("unexpected node method %s", r.Method)
+			}
+			_, _ = w.Write([]byte(`{}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
 
-	client, err := NewClient(server.URL, "slurm", key, server.Client())
+	client, err := NewClient(server.URL, key, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,17 +61,27 @@ func TestClient(t *testing.T) {
 	if err := client.AccountingReady(context.Background(), "other"); err == nil {
 		t.Fatal("unregistered accounting cluster accepted")
 	}
+	nodes, err := client.Nodes(context.Background())
+	if err != nil || len(nodes) != 1 || nodes[0].Name != "worker-a" || nodes[0].AllocCPUs != 0 {
+		t.Fatalf("nodes=%#v err=%v", nodes, err)
+	}
+	if err := client.DrainNode(context.Background(), "worker-a", "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.DeleteNode(context.Background(), "worker-a"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestClientFailsClosed(t *testing.T) {
-	if _, err := NewClient("http://example", "slurm", []byte("short"), nil); err == nil {
+	if _, err := NewClient("http://example", []byte("short"), nil); err == nil {
 		t.Fatal("short JWT key accepted")
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"errors":[{"description":"denied"}]}`))
 	}))
 	defer server.Close()
-	client, err := NewClient(server.URL, "slurm", []byte("01234567890123456789012345678901"), server.Client())
+	client, err := NewClient(server.URL, []byte("01234567890123456789012345678901"), server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +93,7 @@ func TestClientFailsClosed(t *testing.T) {
 		_, _ = w.Write([]byte(`{"jobs":[]} {}`))
 	}))
 	defer trailing.Close()
-	client, err = NewClient(trailing.URL, "slurm", []byte("01234567890123456789012345678901"), trailing.Client())
+	client, err = NewClient(trailing.URL, []byte("01234567890123456789012345678901"), trailing.Client())
 	if err != nil {
 		t.Fatal(err)
 	}

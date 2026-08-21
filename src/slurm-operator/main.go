@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	resourceapi "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -32,8 +34,19 @@ func main() {
 	if namespace == "" {
 		exit(fmt.Errorf("POD_NAMESPACE is required"))
 	}
+	workerImage := os.Getenv("WORKER_IMAGE")
+	if workerImage == "" {
+		exit(fmt.Errorf("WORKER_IMAGE is required"))
+	}
+	headroom, err := resource.ParseQuantity(envOr("WORKER_MEMORY_HEADROOM", "256Mi"))
+	if err != nil || headroom.Value() < 0 {
+		exit(fmt.Errorf("WORKER_MEMORY_HEADROOM must be a non-negative Kubernetes quantity"))
+	}
 
 	scheme := clientgoscheme.Scheme
+	if err := resourceapi.AddToScheme(scheme); err != nil {
+		exit(err)
+	}
 	if err := orchestrationv1alpha1.AddToScheme(scheme); err != nil {
 		exit(err)
 	}
@@ -51,7 +64,7 @@ func main() {
 	if err != nil {
 		exit(err)
 	}
-	if err := (&controllers.ClusterReconciler{Client: manager.GetClient(), Reader: manager.GetAPIReader(), Scheme: manager.GetScheme()}).SetupWithManager(manager); err != nil {
+	if err := (&controllers.ClusterReconciler{Client: manager.GetClient(), Reader: manager.GetAPIReader(), Scheme: manager.GetScheme(), Recorder: manager.GetEventRecorderFor("slurm-operator"), WorkerImage: workerImage, WorkerMemoryHeadroom: headroom.Value()}).SetupWithManager(manager); err != nil {
 		exit(err)
 	}
 	if err := manager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -63,6 +76,13 @@ func main() {
 	if err := manager.Start(ctrl.SetupSignalHandler()); err != nil {
 		exit(err)
 	}
+}
+
+func envOr(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func exit(err error) {
