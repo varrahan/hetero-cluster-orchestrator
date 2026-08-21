@@ -1,9 +1,9 @@
 package controllers
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -74,29 +75,18 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	files := render.Slurm(&cluster)
 	configHash := hash(files.SlurmConf, files.GRESConf)
-	resources := []func(context.Context, *orchestrationv1alpha1.HeterogeneousCluster) error{
-		func(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
-			return r.reconcileConfig(ctx, cluster, files)
-		},
-		r.reconcileControllerService,
-		func(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
-			return r.reconcileControllers(ctx, cluster, configHash)
-		},
-		r.reconcileControllerPDB,
-		r.reconcileDatabaseService,
-		func(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
-			return r.reconcileDatabase(ctx, cluster, configHash)
-		},
-		r.reconcileRESTService,
-		func(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
-			return r.reconcileREST(ctx, cluster, configHash)
-		},
-		func(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
-			return r.reconcileLogin(ctx, cluster, configHash)
-		},
-	}
-	for _, reconcile := range resources {
-		if err := reconcile(ctx, &cluster); err != nil {
+	for _, reconcile := range []func() error{
+		func() error { return r.reconcileConfig(ctx, &cluster, files) },
+		func() error { return r.reconcileControllerService(ctx, &cluster) },
+		func() error { return r.reconcileControllers(ctx, &cluster, configHash) },
+		func() error { return r.reconcileControllerPDB(ctx, &cluster) },
+		func() error { return r.reconcileDatabaseService(ctx, &cluster) },
+		func() error { return r.reconcileDatabase(ctx, &cluster, configHash) },
+		func() error { return r.reconcileRESTService(ctx, &cluster) },
+		func() error { return r.reconcileREST(ctx, &cluster, configHash) },
+		func() error { return r.reconcileLogin(ctx, &cluster, configHash) },
+	} {
+		if err := reconcile(); err != nil {
 			return r.notReady(ctx, &cluster, "ReconcileFailed", err.Error(), err)
 		}
 	}
@@ -166,7 +156,7 @@ func (r *ClusterReconciler) SetupWithManager(manager ctrl.Manager) error {
 func (r *ClusterReconciler) validateStateClaim(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) error {
 	var claim corev1.PersistentVolumeClaim
 	key := types.NamespacedName{Namespace: cluster.Namespace, Name: cluster.Spec.ControlPlane.Controllers.StateSaveClaim}
-	if err := r.reader().Get(ctx, key, &claim); err != nil {
+	if err := r.Reader.Get(ctx, key, &claim); err != nil {
 		if apierrors.IsNotFound(err) {
 			return fmt.Errorf("RWX state claim %q does not exist", key.Name)
 		}
@@ -206,14 +196,14 @@ func (r *ClusterReconciler) reconcileControllers(ctx context.Context, cluster *o
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		componentLabels := labels(cluster, "slurmctld")
 		object.Labels = componentLabels
-		object.Spec.Replicas = int32ptr(controlPlaneReplicas)
+		object.Spec.Replicas = ptr.To(controlPlaneReplicas)
 		object.Spec.ServiceName = name(cluster, "slurmctld")
 		object.Spec.PodManagementPolicy = appsv1.ParallelPodManagement
 		object.Spec.Selector = &metav1.LabelSelector{MatchLabels: componentLabels}
 		object.Spec.Template = corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{Labels: componentLabels, Annotations: map[string]string{"orchestration.gputpu.io/config-hash": configHash}},
 			Spec: corev1.PodSpec{
-				TerminationGracePeriodSeconds: int64ptr(30),
+				TerminationGracePeriodSeconds: ptr.To[int64](30),
 				Affinity:                      requiredAntiAffinity(componentLabels),
 				SecurityContext:               podFSGroup(64030),
 				InitContainers: []corev1.Container{{
@@ -255,8 +245,7 @@ func (r *ClusterReconciler) reconcileControllerPDB(ctx context.Context, cluster 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		componentLabels := labels(cluster, "slurmctld")
 		object.Labels = componentLabels
-		minimum := intstr.FromInt32(1)
-		object.Spec.MinAvailable = &minimum
+		object.Spec.MinAvailable = ptr.To(intstr.FromInt32(1))
 		object.Spec.MaxUnavailable = nil
 		object.Spec.Selector = &metav1.LabelSelector{MatchLabels: componentLabels}
 		return controllerutil.SetControllerReference(cluster, object, r.Scheme)
@@ -312,10 +301,8 @@ func (r *ClusterReconciler) reconcileDatabase(ctx context.Context, cluster *orch
 }
 
 func (r *ClusterReconciler) reconcileREST(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, configHash string) error {
-	runAsUser := int64(64031)
-	nonRoot := true
 	return r.reconcileDeployment(ctx, cluster, "slurmrestd", controlPlaneReplicas, configHash, corev1.PodSpec{
-		SecurityContext: &corev1.PodSecurityContext{RunAsUser: &runAsUser, RunAsGroup: &runAsUser, RunAsNonRoot: &nonRoot},
+		SecurityContext: &corev1.PodSecurityContext{RunAsUser: ptr.To[int64](64031), RunAsGroup: ptr.To[int64](64031), RunAsNonRoot: ptr.To(true)},
 		Containers: []corev1.Container{{
 			Name:    "slurmrestd",
 			Image:   cluster.Spec.ControlPlane.Controllers.Image,
@@ -358,7 +345,7 @@ func (r *ClusterReconciler) reconcileDeployment(ctx context.Context, cluster *or
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		componentLabels := labels(cluster, component)
 		object.Labels = componentLabels
-		object.Spec.Replicas = int32ptr(replicas)
+		object.Spec.Replicas = ptr.To(replicas)
 		object.Spec.Selector = &metav1.LabelSelector{MatchLabels: componentLabels}
 		object.Spec.Template = corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{Labels: componentLabels, Annotations: map[string]string{"orchestration.gputpu.io/config-hash": configHash}},
@@ -392,7 +379,7 @@ func (r *ClusterReconciler) workloadsReady(ctx context.Context, cluster *orchest
 func (r *ClusterReconciler) jwtKey(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) ([]byte, error) {
 	var secret corev1.Secret
 	key := types.NamespacedName{Namespace: cluster.Namespace, Name: cluster.Spec.Authentication.JWTKeySecretRef}
-	if err := r.reader().Get(ctx, key, &secret); err != nil {
+	if err := r.Reader.Get(ctx, key, &secret); err != nil {
 		return nil, fmt.Errorf("read JWT Secret %q: %w", key.Name, err)
 	}
 	value := secret.Data[jwtKey]
@@ -458,15 +445,7 @@ func poolStatus(pools []orchestrationv1alpha1.WorkerPoolSpec) []orchestrationv1a
 	for i, pool := range pools {
 		status[i].Name = pool.Name
 	}
-	slices.SortFunc(status, func(a, b orchestrationv1alpha1.WorkerPoolStatus) int {
-		if a.Name < b.Name {
-			return -1
-		}
-		if a.Name > b.Name {
-			return 1
-		}
-		return 0
-	})
+	slices.SortFunc(status, func(a, b orchestrationv1alpha1.WorkerPoolStatus) int { return cmp.Compare(a.Name, b.Name) })
 	return status
 }
 
@@ -488,8 +467,7 @@ func labels(cluster *orchestrationv1alpha1.HeterogeneousCluster, component strin
 }
 
 func hash(values ...string) string {
-	sum := sha256.Sum256([]byte(fmt.Sprint(values)))
-	return hex.EncodeToString(sum[:])
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprint(values))))
 }
 
 func commonVolumes(cluster *orchestrationv1alpha1.HeterogeneousCluster) []corev1.Volume {
@@ -500,12 +478,12 @@ func commonVolumes(cluster *orchestrationv1alpha1.HeterogeneousCluster) []corev1
 }
 
 func jwtVolume(cluster *orchestrationv1alpha1.HeterogeneousCluster) corev1.Volume {
-	return corev1.Volume{Name: "jwt", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.JWTKeySecretRef, Items: []corev1.KeyToPath{{Key: jwtKey, Path: jwtKey, Mode: int32ptr(0440)}}}}}
+	return corev1.Volume{Name: "jwt", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.JWTKeySecretRef, Items: []corev1.KeyToPath{{Key: jwtKey, Path: jwtKey, Mode: ptr.To[int32](0440)}}}}}
 }
 
 func authVolumes(cluster *orchestrationv1alpha1.HeterogeneousCluster) []corev1.Volume {
 	return []corev1.Volume{
-		{Name: "munge-key", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.MungeKeySecretRef, Items: []corev1.KeyToPath{{Key: mungeKey, Path: mungeKey, Mode: int32ptr(0400)}}}}},
+		{Name: "munge-key", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.MungeKeySecretRef, Items: []corev1.KeyToPath{{Key: mungeKey, Path: mungeKey, Mode: ptr.To[int32](0400)}}}}},
 		{Name: "munge-run", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 	}
 }
@@ -591,17 +569,7 @@ printf '%s\n' \
   'PidFile=/run/slurmdbd.pid' > /etc/slurm/slurmdbd.conf
 exec slurmdbd -D`
 
-func int32ptr(value int32) *int32 { return &value }
-func int64ptr(value int64) *int64 { return &value }
-
-func (r *ClusterReconciler) reader() client.Reader {
-	if r.Reader != nil {
-		return r.Reader
-	}
-	return r.Client
-}
-
 func podFSGroup(group int64) *corev1.PodSecurityContext {
 	policy := corev1.FSGroupChangeOnRootMismatch
-	return &corev1.PodSecurityContext{FSGroup: &group, FSGroupChangePolicy: &policy}
+	return &corev1.PodSecurityContext{FSGroup: ptr.To(group), FSGroupChangePolicy: &policy}
 }

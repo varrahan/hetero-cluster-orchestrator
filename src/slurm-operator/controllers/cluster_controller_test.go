@@ -112,7 +112,7 @@ func TestReconcileRequiresJWTBeforeCreatingWorkloads(t *testing.T) {
 	if err := testClient.Create(ctx, cluster); err != nil {
 		t.Fatal(err)
 	}
-	reconciler := &ClusterReconciler{Client: testClient, Scheme: testScheme}
+	reconciler := &ClusterReconciler{Client: testClient, Reader: testClient, Scheme: testScheme}
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(cluster)}); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestReconcileCreateUpdateRestartAndRepair(t *testing.T) {
 	}))
 	defer server.Close()
 
-	reconciler := &ClusterReconciler{Client: testClient, Scheme: testScheme, HTTPClient: server.Client(), RESTBaseURL: func(*orchestrationv1alpha1.HeterogeneousCluster) string { return server.URL }}
+	reconciler := &ClusterReconciler{Client: testClient, Reader: testClient, Scheme: testScheme, HTTPClient: server.Client(), RESTBaseURL: func(*orchestrationv1alpha1.HeterogeneousCluster) string { return server.URL }}
 	request := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: cluster.Name}}
 	if _, err := reconciler.Reconcile(ctx, request); err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestReconcileCreateUpdateRestartAndRepair(t *testing.T) {
 		t.Fatalf("partial deletion was not repaired: %v", err)
 	}
 
-	restarted := &ClusterReconciler{Client: testClient, Scheme: testScheme, HTTPClient: server.Client(), RESTBaseURL: reconciler.RESTBaseURL}
+	restarted := &ClusterReconciler{Client: testClient, Reader: testClient, Scheme: testScheme, HTTPClient: server.Client(), RESTBaseURL: reconciler.RESTBaseURL}
 	if _, err := restarted.Reconcile(ctx, request); err != nil {
 		t.Fatal(err)
 	}

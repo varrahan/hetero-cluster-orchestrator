@@ -2,34 +2,28 @@ package slurm
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestClient(t *testing.T) {
+	key := []byte("01234567890123456789012345678901")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-SLURM-USER-NAME") != "slurm" {
 			t.Error("missing Slurm user header")
 		}
-		parts := strings.Split(r.Header.Get("X-SLURM-USER-TOKEN"), ".")
-		if len(parts) != 3 {
-			t.Fatal("invalid JWT")
-		}
-		claimsJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+		token, err := jwt.Parse(r.Header.Get("X-SLURM-USER-TOKEN"), func(*jwt.Token) (any, error) { return key, nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
-		var claims map[string]any
-		if err := json.Unmarshal(claimsJSON, &claims); err != nil {
-			t.Fatal(err)
-		}
+		claims := token.Claims.(jwt.MapClaims)
 		if claims["sun"] != "slurm" || claims["exp"].(float64)-claims["iat"].(float64) != 60 {
-			t.Fatalf("unexpected claims: %#v", claims)
+			t.Errorf("unexpected claims: %#v", claims)
 		}
 
 		switch r.URL.Path {
@@ -43,11 +37,10 @@ func TestClient(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(server.URL, "slurm", []byte("01234567890123456789012345678901"), server.Client())
+	client, err := NewClient(server.URL, "slurm", key, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
-	client.now = func() time.Time { return time.Unix(100, 0) }
 	jobs, err := client.PendingJobs(context.Background())
 	if err != nil {
 		t.Fatal(err)

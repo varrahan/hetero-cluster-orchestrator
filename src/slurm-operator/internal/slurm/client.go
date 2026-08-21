@@ -2,9 +2,6 @@ package slurm
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const maxResponseBytes = 8 << 20
@@ -25,7 +24,6 @@ type Client struct {
 	username   string
 	key        []byte
 	httpClient *http.Client
-	now        func() time.Time
 }
 
 type PendingJob struct {
@@ -83,7 +81,6 @@ func NewClient(baseURL, username string, key []byte, httpClient *http.Client) (*
 		username:   username,
 		key:        slices.Clone(key),
 		httpClient: httpClient,
-		now:        time.Now,
 	}, nil
 }
 
@@ -162,26 +159,10 @@ func (c *Client) get(ctx context.Context, path string, output any) error {
 }
 
 func (c *Client) token() (string, error) {
-	now := c.now().Unix()
-	header, err := json.Marshal(struct {
-		Algorithm string `json:"alg"`
-		Type      string `json:"typ"`
-	}{Algorithm: "HS256", Type: "JWT"})
-	if err != nil {
-		return "", err
-	}
-	claims, err := json.Marshal(struct {
-		IssuedAt  int64  `json:"iat"`
-		ExpiresAt int64  `json:"exp"`
-		Username  string `json:"sun"`
-	}{IssuedAt: now, ExpiresAt: now + 60, Username: c.username})
-	if err != nil {
-		return "", err
-	}
-	encoded := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(claims)
-	mac := hmac.New(sha256.New, c.key)
-	_, _ = mac.Write([]byte(encoded))
-	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+	now := time.Now().Unix()
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iat": now, "exp": now + 60, "sun": c.username,
+	}).SignedString(c.key)
 }
 
 func responseError(apiErrors []apiError) error {

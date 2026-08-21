@@ -1,10 +1,10 @@
 package render
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	orchestrationv1alpha1 "github.com/varrahan/hetero-cluster-orchestrater/src/slurm-operator/api/v1alpha1"
@@ -25,9 +25,7 @@ type SlurmFiles struct {
 func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 	name, namespace := cluster.Name, cluster.Namespace
 	pools := slices.Clone(cluster.Spec.WorkerPools)
-	sort.Slice(pools, func(i, j int) bool {
-		return pools[i].Partition < pools[j].Partition
-	})
+	slices.SortFunc(pools, func(a, b orchestrationv1alpha1.WorkerPoolSpec) int { return cmp.Compare(a.Partition, b.Partition) })
 
 	gresTypes := make(map[string]struct{})
 	maxNodes := int32(0)
@@ -77,7 +75,7 @@ func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 		line("AccountingStorageTRES", strings.Join(tres, ","))
 	}
 	for i, pool := range pools {
-		value := fmt.Sprintf("Nodes=ALL State=UP")
+		value := "Nodes=ALL State=UP"
 		if i == 0 {
 			value += " Default=YES"
 		}

@@ -21,10 +21,8 @@ import (
 
 func main() {
 	var metricsAddress, probeAddress string
-	var leaderElection bool
 	flag.StringVar(&metricsAddress, "metrics-bind-address", ":8080", "metrics listen address")
 	flag.StringVar(&probeAddress, "health-probe-bind-address", ":8081", "health probe listen address")
-	flag.BoolVar(&leaderElection, "leader-elect", true, "enable leader election")
 	logging := zap.Options{Development: false}
 	logging.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -43,7 +41,7 @@ func main() {
 		Scheme:                  scheme,
 		Metrics:                 metricsserver.Options{BindAddress: metricsAddress},
 		HealthProbeBindAddress:  probeAddress,
-		LeaderElection:          leaderElection,
+		LeaderElection:          true,
 		LeaderElectionID:        "slurm-operator.orchestration.gputpu.io",
 		LeaderElectionNamespace: namespace,
 		Cache: cache.Options{DefaultNamespaces: map[string]cache.Config{
