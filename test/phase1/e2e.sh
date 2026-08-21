@@ -163,7 +163,6 @@ spec:
     controllers:
       image: slurm-control-plane:dev
       stateSaveClaim: slurm-state
-    rest: {}
     accounting:
       databaseSecretRef: slurm-mariadb
     login: {}

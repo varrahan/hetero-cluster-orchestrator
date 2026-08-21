@@ -44,10 +44,6 @@ spec:
       - name: operator
         image: slurm-operator:dev
         imagePullPolicy: IfNotPresent
-        args:
-        - --leader-elect=true
-        - --metrics-bind-address=:8080
-        - --health-probe-bind-address=:8081
         env:
         - name: POD_NAMESPACE
           valueFrom:

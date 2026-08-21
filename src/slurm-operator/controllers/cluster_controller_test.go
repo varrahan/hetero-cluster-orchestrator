@@ -6,12 +6,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -64,18 +66,9 @@ func TestCRDDefaultsAndValidation(t *testing.T) {
 	if err := testClient.Create(ctx, object); err != nil {
 		t.Fatal(err)
 	}
-	replicas, found, err := unstructured.NestedInt64(object.Object, "spec", "controlPlane", "controllers", "replicas")
-	if err != nil || !found || replicas != 2 {
-		t.Fatalf("controller replicas default = %d, found=%v, err=%v", replicas, found, err)
-	}
-	if version, _, _ := unstructured.NestedString(object.Object, "spec", "slurmVersion"); version != "25.11.7" {
-		t.Fatalf("slurmVersion default = %q", version)
-	}
-	for component, want := range map[string]int64{"rest": 2, "login": 1} {
-		got, found, err := unstructured.NestedInt64(object.Object, "spec", "controlPlane", component, "replicas")
-		if err != nil || !found || got != want {
-			t.Fatalf("%s replicas default = %d, found=%v, err=%v", component, got, found, err)
-		}
+	replicas, found, err := unstructured.NestedInt64(object.Object, "spec", "controlPlane", "login", "replicas")
+	if err != nil || !found || replicas != 1 {
+		t.Fatalf("login replicas default = %d, found=%v, err=%v", replicas, found, err)
 	}
 	pools, _, _ := unstructured.NestedSlice(object.Object, "spec", "workerPools")
 	pool := pools[0].(map[string]any)
@@ -83,14 +76,6 @@ func TestCRDDefaultsAndValidation(t *testing.T) {
 		t.Fatalf("worker pool defaults not applied: %#v", pool)
 	}
 
-	invalid := validUnstructured(namespace)
-	invalid.SetName("invalid")
-	if err := unstructured.SetNestedField(invalid.Object, int64(1), "spec", "controlPlane", "controllers", "replicas"); err != nil {
-		t.Fatal(err)
-	}
-	if err := testClient.Create(ctx, invalid); err == nil {
-		t.Fatal("controller replicas other than two accepted")
-	}
 	invalidMemory := validCluster(namespace)
 	invalidMemory.Name = "invalid-memory"
 	invalidMemory.Spec.WorkerPools[0].MemoryUnit = "1.5Gi"
@@ -203,7 +188,7 @@ func TestReconcileCreateUpdateRestartAndRepair(t *testing.T) {
 	if err := testClient.Get(ctx, request.NamespacedName, cluster); err != nil {
 		t.Fatal(err)
 	}
-	if condition(cluster.Status.Conditions, orchestrationv1alpha1.ConditionControlPlaneReady) != metav1.ConditionTrue || condition(cluster.Status.Conditions, orchestrationv1alpha1.ConditionAccountingReady) != metav1.ConditionTrue {
+	if !meta.IsStatusConditionTrue(cluster.Status.Conditions, orchestrationv1alpha1.ConditionControlPlaneReady) || !meta.IsStatusConditionTrue(cluster.Status.Conditions, orchestrationv1alpha1.ConditionAccountingReady) {
 		t.Fatalf("unexpected conditions: %#v", cluster.Status.Conditions)
 	}
 	if cluster.Status.ObservedGeneration != cluster.Generation {
@@ -289,10 +274,8 @@ func validCluster(namespace string) *orchestrationv1alpha1.HeterogeneousCluster 
 		TypeMeta:   metav1.TypeMeta{APIVersion: orchestrationv1alpha1.GroupVersion.String(), Kind: "HeterogeneousCluster"},
 		ObjectMeta: metav1.ObjectMeta{Name: "research", Namespace: namespace},
 		Spec: orchestrationv1alpha1.HeterogeneousClusterSpec{
-			SlurmVersion: "25.11.7",
 			ControlPlane: orchestrationv1alpha1.ControlPlaneSpec{
-				Controllers: orchestrationv1alpha1.ControllersSpec{Image: "slurm:test", Replicas: 2, StateSaveClaim: "state"},
-				REST:        orchestrationv1alpha1.RESTSpec{Replicas: 2},
+				Controllers: orchestrationv1alpha1.ControllersSpec{Image: "slurm:test", StateSaveClaim: "state"},
 				Accounting:  orchestrationv1alpha1.AccountingSpec{DatabaseSecretRef: "database"},
 				Login:       orchestrationv1alpha1.LoginSpec{Replicas: 1},
 			},
@@ -314,7 +297,6 @@ func validUnstructured(namespace string) *unstructured.Unstructured {
 		"spec": map[string]any{
 			"controlPlane": map[string]any{
 				"controllers": map[string]any{"image": "slurm:test", "stateSaveClaim": "state"},
-				"rest":        map[string]any{},
 				"accounting":  map[string]any{"databaseSecretRef": "database"},
 				"login":       map[string]any{},
 			},
@@ -326,29 +308,10 @@ func validUnstructured(namespace string) *unstructured.Unstructured {
 	}}
 }
 
-func condition(conditions []metav1.Condition, conditionType string) metav1.ConditionStatus {
-	for _, item := range conditions {
-		if item.Type == conditionType {
-			return item.Status
-		}
-	}
-	return ""
-}
-
 func hasVolume(volumes []corev1.Volume, name string) bool {
-	for _, volume := range volumes {
-		if volume.Name == name {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(volumes, func(volume corev1.Volume) bool { return volume.Name == name })
 }
 
 func hasVolumeMount(mounts []corev1.VolumeMount, name string) bool {
-	for _, mount := range mounts {
-		if mount.Name == name {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(mounts, func(mount corev1.VolumeMount) bool { return mount.Name == name })
 }

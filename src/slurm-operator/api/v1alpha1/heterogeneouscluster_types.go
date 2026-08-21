@@ -16,9 +16,6 @@ const (
 // +kubebuilder:validation:XValidation:rule="self.workerPools.all(x, self.workerPools.filter(y, y.partition == x.partition).size() == 1)",message="worker pool partitions must be unique"
 // +kubebuilder:validation:XValidation:rule="!has(self.recovery) || !self.recovery.automaticReboot || self.workerPools.exists(p, p.profiles.size() > 0)",message="automatic recovery requires at least one worker profile"
 type HeterogeneousClusterSpec struct {
-	// +kubebuilder:default:="25.11.7"
-	// +kubebuilder:validation:Enum="25.11.7"
-	SlurmVersion   string             `json:"slurmVersion"`
 	ControlPlane   ControlPlaneSpec   `json:"controlPlane"`
 	Authentication AuthenticationSpec `json:"authentication"`
 	Checkpoint     *CheckpointSpec    `json:"checkpoint,omitempty"`
@@ -32,7 +29,6 @@ type HeterogeneousClusterSpec struct {
 
 type ControlPlaneSpec struct {
 	Controllers ControllersSpec `json:"controllers"`
-	REST        RESTSpec        `json:"rest"`
 	Accounting  AccountingSpec  `json:"accounting"`
 	Login       LoginSpec       `json:"login"`
 }
@@ -42,19 +38,10 @@ type ControllersSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=512
 	Image string `json:"image"`
-	// +kubebuilder:default:=2
-	// +kubebuilder:validation:Enum=2
-	Replicas int32 `json:"replicas"`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="stateSaveClaim is immutable"
 	StateSaveClaim string `json:"stateSaveClaim"`
-}
-
-type RESTSpec struct {
-	// +kubebuilder:default:=2
-	// +kubebuilder:validation:Enum=2
-	Replicas int32 `json:"replicas"`
 }
 
 type AccountingSpec struct {
@@ -147,10 +134,6 @@ type WorkerProfile struct {
 type RecoverySpec struct {
 	// +kubebuilder:default:=false
 	AutomaticReboot bool `json:"automaticReboot"`
-	// +kubebuilder:default:=1
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=1
-	MaxAutomaticReboots int32 `json:"maxAutomaticReboots"`
 	// +kubebuilder:default:="2m"
 	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s')",message="verificationTimeout must be positive"
 	VerificationTimeout metav1.Duration `json:"verificationTimeout"`

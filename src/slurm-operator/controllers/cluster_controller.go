@@ -15,7 +15,6 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -31,9 +30,10 @@ import (
 )
 
 const (
-	requeueInterval = 5 * time.Second
-	mungeKey        = "munge.key"
-	jwtKey          = "jwt_hs256.key"
+	requeueInterval      = 5 * time.Second
+	controlPlaneReplicas = int32(2)
+	mungeKey             = "munge.key"
+	jwtKey               = "jwt_hs256.key"
 )
 
 // +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters,verbs=get;list;watch
@@ -135,23 +135,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 }
 
 func validateSpec(spec orchestrationv1alpha1.HeterogeneousClusterSpec) error {
-	partitions := make(map[string]struct{}, len(spec.WorkerPools))
 	gresMappings := make(map[string]string)
-	hasVerifier := false
 	for _, pool := range spec.WorkerPools {
-		if _, exists := partitions[pool.Partition]; exists {
-			return fmt.Errorf("partition %q is used by more than one worker pool", pool.Partition)
-		}
-		partitions[pool.Partition] = struct{}{}
-
-		memoryUnit, err := resource.ParseQuantity(pool.MemoryUnit)
-		if err != nil || memoryUnit.Sign() <= 0 || memoryUnit.Value()%(1024*1024) != 0 {
-			return fmt.Errorf("worker pool %q memoryUnit must be a positive whole number of MiB", pool.Name)
-		}
-
 		profileNames := make(map[string]struct{}, len(pool.Profiles))
 		for _, profile := range pool.Profiles {
-			hasVerifier = true
 			if _, exists := profileNames[profile.Name]; exists {
 				return fmt.Errorf("worker pool %q has duplicate profile name %q", pool.Name, profile.Name)
 			}
@@ -161,9 +148,6 @@ func validateSpec(spec orchestrationv1alpha1.HeterogeneousClusterSpec) error {
 			}
 			gresMappings[profile.Gres] = pool.Name + "/" + profile.Name
 		}
-	}
-	if spec.Recovery != nil && spec.Recovery.AutomaticReboot && !hasVerifier {
-		return fmt.Errorf("automatic recovery requires at least one worker profile")
 	}
 	return nil
 }
@@ -222,7 +206,7 @@ func (r *ClusterReconciler) reconcileControllers(ctx context.Context, cluster *o
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		componentLabels := labels(cluster, "slurmctld")
 		object.Labels = componentLabels
-		object.Spec.Replicas = int32ptr(cluster.Spec.ControlPlane.Controllers.Replicas)
+		object.Spec.Replicas = int32ptr(controlPlaneReplicas)
 		object.Spec.ServiceName = name(cluster, "slurmctld")
 		object.Spec.PodManagementPolicy = appsv1.ParallelPodManagement
 		object.Spec.Selector = &metav1.LabelSelector{MatchLabels: componentLabels}
@@ -330,7 +314,7 @@ func (r *ClusterReconciler) reconcileDatabase(ctx context.Context, cluster *orch
 func (r *ClusterReconciler) reconcileREST(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, configHash string) error {
 	runAsUser := int64(64031)
 	nonRoot := true
-	return r.reconcileDeployment(ctx, cluster, "slurmrestd", cluster.Spec.ControlPlane.REST.Replicas, configHash, corev1.PodSpec{
+	return r.reconcileDeployment(ctx, cluster, "slurmrestd", controlPlaneReplicas, configHash, corev1.PodSpec{
 		SecurityContext: &corev1.PodSecurityContext{RunAsUser: &runAsUser, RunAsGroup: &runAsUser, RunAsNonRoot: &nonRoot},
 		Containers: []corev1.Container{{
 			Name:    "slurmrestd",
@@ -390,10 +374,10 @@ func (r *ClusterReconciler) workloadsReady(ctx context.Context, cluster *orchest
 	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: name(cluster, "slurmctld")}, &controllers); err != nil {
 		return false, err
 	}
-	if controllers.Status.ReadyReplicas != cluster.Spec.ControlPlane.Controllers.Replicas {
+	if controllers.Status.ReadyReplicas != controlPlaneReplicas {
 		return false, nil
 	}
-	for component, replicas := range map[string]int32{"slurmdbd": 1, "slurmrestd": cluster.Spec.ControlPlane.REST.Replicas, "login": cluster.Spec.ControlPlane.Login.Replicas} {
+	for component, replicas := range map[string]int32{"slurmdbd": 1, "slurmrestd": controlPlaneReplicas, "login": cluster.Spec.ControlPlane.Login.Replicas} {
 		var deployment appsv1.Deployment
 		if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: name(cluster, component)}, &deployment); err != nil {
 			return false, err

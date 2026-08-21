@@ -4,14 +4,10 @@ metadata:
   name: research
   namespace: slurm-system
 spec:
-  slurmVersion: "25.11.7"
   controlPlane:
     controllers:
       image: slurm-control-plane:25.11.7
-      replicas: 2
       stateSaveClaim: slurm-state-rwx
-    rest:
-      replicas: 2
     accounting:
       databaseSecretRef: slurm-mariadb
     login:

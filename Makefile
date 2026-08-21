@@ -39,10 +39,6 @@ test: python-check
 	done
 
 generate:
-	@set -e; for module in $(GO_MODULES); do \
-		printf 'generating %s\n' "$$module"; \
-		(cd "$$module" && GOWORK=off go generate ./...); \
-	done
 	@mkdir -p src/manifests/crds src/manifests/rbac
 	@cd src/slurm-operator && GOWORK=off go tool controller-gen object paths=./api/...
 	@cd src/slurm-operator && GOWORK=off go tool controller-gen \

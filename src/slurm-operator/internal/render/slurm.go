@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -67,7 +68,7 @@ func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 	line("ReturnToService", 2)
 	line("TreeWidth", 65533)
 	line("MaxNodeCount", maxNodes)
-	if values := sortedKeys(gresTypes); len(values) > 0 {
+	if values := slices.Sorted(maps.Keys(gresTypes)); len(values) > 0 {
 		line("GresTypes", strings.Join(values, ","))
 		tres := make([]string, len(values))
 		for i, value := range values {
@@ -84,13 +85,4 @@ func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 	}
 
 	return SlurmFiles{SlurmConf: b.String(), GRESConf: ""}
-}
-
-func sortedKeys(values map[string]struct{}) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }

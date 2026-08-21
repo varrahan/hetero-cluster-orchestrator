@@ -107,12 +107,6 @@ spec:
                         maxLength: 512
                         minLength: 1
                         type: string
-                      replicas:
-                        default: 2
-                        enum:
-                        - 2
-                        format: int32
-                        type: integer
                       stateSaveClaim:
                         maxLength: 253
                         minLength: 1
@@ -122,7 +116,6 @@ spec:
                           rule: self == oldSelf
                     required:
                     - image
-                    - replicas
                     - stateSaveClaim
                     type: object
                   login:
@@ -136,34 +129,16 @@ spec:
                     required:
                     - replicas
                     type: object
-                  rest:
-                    properties:
-                      replicas:
-                        default: 2
-                        enum:
-                        - 2
-                        format: int32
-                        type: integer
-                    required:
-                    - replicas
-                    type: object
                 required:
                 - accounting
                 - controllers
                 - login
-                - rest
                 type: object
               recovery:
                 properties:
                   automaticReboot:
                     default: false
                     type: boolean
-                  maxAutomaticReboots:
-                    default: 1
-                    format: int32
-                    maximum: 1
-                    minimum: 0
-                    type: integer
                   verificationTimeout:
                     default: 2m
                     type: string
@@ -172,14 +147,8 @@ spec:
                       rule: duration(self) > duration('0s')
                 required:
                 - automaticReboot
-                - maxAutomaticReboots
                 - verificationTimeout
                 type: object
-              slurmVersion:
-                default: 25.11.7
-                enum:
-                - 25.11.7
-                type: string
               workerPools:
                 items:
                   properties:
@@ -270,7 +239,6 @@ spec:
             required:
             - authentication
             - controlPlane
-            - slurmVersion
             - workerPools
             type: object
             x-kubernetes-validations:

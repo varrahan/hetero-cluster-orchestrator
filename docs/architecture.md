@@ -166,14 +166,10 @@ metadata:
   name: research
   namespace: slurm-system
 spec:
-  slurmVersion: "25.11.7"
   controlPlane:
     controllers:
       image: registry.example/slurm:25.11.7
-      replicas: 2
       stateSaveClaim: slurm-state-rwx
-    rest:
-      replicas: 2
     accounting:
       databaseSecretRef: slurm-mariadb
     login:
@@ -206,13 +202,12 @@ spec:
           deviceClassName: opentpu-sim.gputpu.io
   recovery:
     automaticReboot: true
-    maxAutomaticReboots: 1
     verificationTimeout: 2m
 ```
 
 Native CRD admission validation rejects static inconsistencies such as
-controller replicas other than two, fractional memory units, duplicate pool
-partitions, or recovery enabled without a verifier profile. Before creating
+fractional memory units, duplicate pool partitions, or recovery enabled
+without a verifier profile. Before creating
 workloads, the operator also rejects duplicate cross-pool Slurm GRES mappings
 and a missing or non-RWX state claim. These failures are reported through the
 control-plane and accounting conditions.

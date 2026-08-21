@@ -48,7 +48,6 @@ type jobState struct {
 type apiError struct {
 	Description string `json:"description"`
 	Error       string `json:"error"`
-	Number      int32  `json:"error_number"`
 }
 
 type jobsResponse struct {
