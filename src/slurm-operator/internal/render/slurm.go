@@ -81,10 +81,6 @@ func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 	line("ReturnToService", 2)
 	line("TreeWidth", 65533)
 	line("MaxNodeCount", maxNodes)
-	if cluster.Spec.ControlPlane.Controllers.CloudBurstTokenSecretRef != "" {
-		line("ResumeProgram", "/usr/local/bin/cloud-burst-resume")
-		line("SuspendProgram", "/usr/local/bin/cloud-burst-suspend")
-	}
 	if values := slices.Sorted(maps.Keys(gresTypes)); len(values) > 0 {
 		line("GresTypes", strings.Join(values, ","))
 		line("AccountingStorageTRES", strings.Join(slices.Sorted(maps.Keys(accountingTRES)), ","))

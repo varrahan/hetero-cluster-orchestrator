@@ -3,10 +3,7 @@ go 1.26.0
 toolchain go1.26.7
 
 use (
-	./src/shared
 	./src/slurm-operator
 	./src/dra-driver
-	./src/quantization-engine
-	./src/watchdog-daemon
 	./src/slurm-compute-node
 )

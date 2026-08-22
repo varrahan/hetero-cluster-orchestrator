@@ -33,7 +33,6 @@ type PendingJob struct {
 	Priority      int64
 	EligibleTime  int64
 	HetJobID      uint32
-	HetJobOffset  uint32
 	CPUs          int64
 	NodeCount     int64
 	Tasks         int64
@@ -61,7 +60,6 @@ type job struct {
 	Priority      slurmNumber `json:"priority"`
 	EligibleTime  slurmNumber `json:"eligible_time"`
 	HetJobID      slurmNumber `json:"het_job_id"`
-	HetJobOffset  slurmNumber `json:"het_job_offset"`
 	CPUs          slurmNumber `json:"cpus"`
 	NodeCount     slurmNumber `json:"node_count"`
 	Tasks         slurmNumber `json:"tasks"`
@@ -119,18 +117,16 @@ type accountingCluster struct {
 
 type slurmNumber struct {
 	Value int64
-	Set   bool
 }
 
 func (n *slurmNumber) UnmarshalJSON(data []byte) error {
 	var direct int64
 	if err := json.Unmarshal(data, &direct); err == nil {
-		n.Value, n.Set = direct, true
+		n.Value = direct
 		return nil
 	}
 	var wrapped struct {
 		Number   int64 `json:"number"`
-		Set      bool  `json:"set"`
 		Infinite bool  `json:"infinite"`
 	}
 	if err := json.Unmarshal(data, &wrapped); err != nil {
@@ -139,7 +135,7 @@ func (n *slurmNumber) UnmarshalJSON(data []byte) error {
 	if wrapped.Infinite {
 		return fmt.Errorf("infinite Slurm numeric value is unsupported")
 	}
-	n.Value, n.Set = wrapped.Number, wrapped.Set
+	n.Value = wrapped.Number
 	return nil
 }
 
@@ -163,7 +159,7 @@ func NewClient(baseURL string, key []byte, httpClient *http.Client) (*Client, er
 
 func (c *Client) PendingJobs(ctx context.Context) ([]PendingJob, error) {
 	var response jobsResponse
-	if err := c.get(ctx, "/slurm/v0.0.44/jobs/", &response); err != nil {
+	if err := c.request(ctx, http.MethodGet, "/slurm/v0.0.44/jobs/", nil, &response); err != nil {
 		return nil, err
 	}
 	if err := responseError(response.Errors); err != nil {
@@ -180,8 +176,8 @@ func (c *Client) PendingJobs(ctx context.Context) ([]PendingJob, error) {
 			pending = append(pending, PendingJob{
 				ID: job.ID, Partition: job.Partition, Reason: job.Reason,
 				Priority: job.Priority.Value, EligibleTime: job.EligibleTime.Value,
-				HetJobID: uint32(job.HetJobID.Value), HetJobOffset: uint32(job.HetJobOffset.Value),
-				CPUs: job.CPUs.Value, NodeCount: job.NodeCount.Value, Tasks: job.Tasks.Value,
+				HetJobID: uint32(job.HetJobID.Value),
+				CPUs:     job.CPUs.Value, NodeCount: job.NodeCount.Value, Tasks: job.Tasks.Value,
 				CPUsPerTask: job.CPUsPerTask.Value, TasksPerNode: job.TasksPerNode.Value,
 				MemoryPerCPU: job.MemoryPerCPU.Value, MemoryPerNode: job.MemoryPerNode.Value,
 				CPUsPerTRES: job.CPUsPerTRES, MemoryPerTRES: job.MemoryPerTRES,
@@ -196,7 +192,7 @@ func (c *Client) PendingJobs(ctx context.Context) ([]PendingJob, error) {
 
 func (c *Client) AccountingReady(ctx context.Context, clusterName string) error {
 	var response clustersResponse
-	if err := c.get(ctx, "/slurmdb/v0.0.44/clusters/", &response); err != nil {
+	if err := c.request(ctx, http.MethodGet, "/slurmdb/v0.0.44/clusters/", nil, &response); err != nil {
 		return err
 	}
 	if err := responseError(response.Errors); err != nil {
@@ -210,15 +206,9 @@ func (c *Client) AccountingReady(ctx context.Context, clusterName string) error 
 	return nil
 }
 
-func (c *Client) get(ctx context.Context, path string, output any) error {
-	return c.request(ctx, http.MethodGet, path, nil, output)
-}
-
 type Node struct {
 	Name        string   `json:"name"`
 	State       []string `json:"state"`
-	Address     string   `json:"address"`
-	Partitions  []string `json:"partitions"`
 	Reservation string   `json:"reservation"`
 	AllocCPUs   int64
 	AllocMemory int64
@@ -230,8 +220,6 @@ type nodesResponse struct {
 	Nodes  []struct {
 		Name        string      `json:"name"`
 		State       []string    `json:"state"`
-		Address     string      `json:"address"`
-		Partitions  []string    `json:"partitions"`
 		Reservation string      `json:"reservation"`
 		AllocCPUs   slurmNumber `json:"alloc_cpus"`
 		AllocMemory slurmNumber `json:"alloc_memory"`
@@ -241,7 +229,7 @@ type nodesResponse struct {
 
 func (c *Client) Nodes(ctx context.Context) ([]Node, error) {
 	var response nodesResponse
-	if err := c.get(ctx, "/slurm/v0.0.44/nodes/", &response); err != nil {
+	if err := c.request(ctx, http.MethodGet, "/slurm/v0.0.44/nodes/", nil, &response); err != nil {
 		return nil, err
 	}
 	if err := responseError(response.Errors); err != nil {
@@ -249,7 +237,7 @@ func (c *Client) Nodes(ctx context.Context) ([]Node, error) {
 	}
 	nodes := make([]Node, 0, len(response.Nodes))
 	for _, node := range response.Nodes {
-		nodes = append(nodes, Node{Name: node.Name, State: node.State, Address: node.Address, Partitions: node.Partitions, Reservation: node.Reservation, AllocCPUs: node.AllocCPUs.Value, AllocMemory: node.AllocMemory.Value, GRESUsed: node.GRESUsed})
+		nodes = append(nodes, Node{Name: node.Name, State: node.State, Reservation: node.Reservation, AllocCPUs: node.AllocCPUs.Value, AllocMemory: node.AllocMemory.Value, GRESUsed: node.GRESUsed})
 	}
 	return nodes, nil
 }

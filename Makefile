@@ -1,11 +1,8 @@
 include versions.mk
 
 GO_MODULES := \
-	src/shared \
 	src/slurm-operator \
 	src/dra-driver \
-	src/quantization-engine \
-	src/watchdog-daemon \
 	src/slurm-compute-node
 BIN_DIR := $(CURDIR)/bin
 GO_FILES := $(shell find src -type f -name '*.go' -print)
@@ -14,17 +11,14 @@ JSON_FILES := $(shell find docs -type f -name '*.json' -print)
 SHELL_FILES := $(shell find test -type f -name '*.sh' -print 2>/dev/null)
 
 .PHONY: all build test generate manifests verify fmt fmt-check vet versions \
-	verify-versions manifests-check generated-check python-check json-check shell-check phase1-e2e
+	verify-versions manifests-check generated-check python-check json-check shell-check phase1-e2e phase2-e2e phase2-gpu-e2e
 
 all: build
 
 build: python-check
 	@mkdir -p "$(BIN_DIR)"
-	@cd src/shared && GOWORK=off go build ./...
 	@cd src/slurm-operator && GOWORK=off go build -o "$(BIN_DIR)/slurm-operator" .
 	@cd src/dra-driver && GOWORK=off go build -o "$(BIN_DIR)/dra-driver" .
-	@cd src/quantization-engine && GOWORK=off go build -o "$(BIN_DIR)/quantization-engine" .
-	@cd src/watchdog-daemon && GOWORK=off go build -o "$(BIN_DIR)/watchdog-daemon" .
 	@cd src/slurm-compute-node && GOWORK=off go build -o "$(BIN_DIR)" ./cmd/...
 
 test: python-check
@@ -51,6 +45,12 @@ manifests:
 
 phase1-e2e:
 	./test/phase1/e2e.sh
+
+phase2-e2e:
+	./test/phase2/e2e.sh
+
+phase2-gpu-e2e:
+	./test/phase2/gpu-e2e.sh
 
 fmt:
 	gofmt -w $(GO_FILES)
@@ -100,7 +100,8 @@ verify-versions:
 	done
 
 versions:
-	@printf 'Go %s\nKubernetes %s\nSlurm %s\nOpenTPU %s\n' \
-		'$(GO_VERSION)' '$(KUBERNETES_VERSION)' '$(SLURM_VERSION)' '$(OPENTPU_REVISION)'
+	@printf 'Go %s\nKubernetes %s\nSlurm %s\nOpenTPU %s\nNVIDIA toolkit %s\nPyRTL %s\nNumPy %s\n' \
+		'$(GO_VERSION)' '$(KUBERNETES_VERSION)' '$(SLURM_VERSION)' '$(OPENTPU_REVISION)' \
+		'$(NVIDIA_TOOLKIT_VERSION)' '$(PYRTL_VERSION)' '$(NUMPY_VERSION)'
 
 verify: verify-versions generated-check fmt-check build test vet manifests-check json-check shell-check

@@ -14,13 +14,6 @@ COPY --from=operator-build /slurm-operator /slurm-operator
 USER 65532:65532
 ENTRYPOINT ["/slurm-operator"]
 
-FROM golang:${GO_VERSION}-bookworm AS cloud-burst-build
-WORKDIR /src
-COPY src/slurm-compute-node/go.mod src/slurm-compute-node/go.sum ./
-RUN GOWORK=off go mod download
-COPY src/slurm-compute-node/cmd/cloud-burst/ ./cmd/cloud-burst/
-RUN CGO_ENABLED=0 GOWORK=off go build -trimpath -ldflags='-s -w' -o /cloud-burst ./cmd/cloud-burst
-
 FROM ubuntu:24.04 AS slurm-build
 ARG SLURM_VERSION
 ARG SLURM_SHA256
@@ -54,5 +47,3 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     rm -f /etc/munge/munge.key && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=slurm-build /install/ /
-COPY --from=cloud-burst-build /cloud-burst /usr/local/bin/cloud-burst-resume
-COPY --from=cloud-burst-build /cloud-burst /usr/local/bin/cloud-burst-suspend

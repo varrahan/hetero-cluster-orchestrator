@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -77,7 +76,6 @@ func (r *ClusterReconciler) cleanupClusterWorkers(ctx context.Context, cluster *
 type workerCandidate struct {
 	pod   *corev1.Pod
 	shape resourceplan.Shape
-	idle  bool
 }
 
 func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, restClient *slurm.Client, jobs []slurm.PendingJob) (workerResult, error) {
@@ -187,7 +185,7 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 		node, registered := nodeByName[pod.Name]
 		idle := ready && registered && nodeIdle(node)
 		if !ready || !registered || idle {
-			candidates = append(candidates, workerCandidate{pod: pod, shape: shape, idle: idle})
+			candidates = append(candidates, workerCandidate{pod: pod, shape: shape})
 		}
 	}
 
@@ -210,7 +208,7 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 				if index >= 0 {
 					localUsed[candidates[index].pod.Name] = true
 				} else {
-					creates = append(creates, resourceplan.Demand{JobID: demand.JobID, GroupID: demand.GroupID, PoolName: demand.PoolName, Partition: demand.Partition, Count: 1, Shape: demand.Shape})
+					creates = append(creates, resourceplan.Demand{JobID: demand.JobID, GroupID: demand.GroupID, PoolName: demand.PoolName, Count: 1, Shape: demand.Shape})
 				}
 			}
 		}
@@ -504,7 +502,7 @@ func resourceClaim(namespace, name string, shape resourceplan.Shape, pool orches
 	for name := range shape.GRES {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	for _, gres := range names {
 		profile, ok := profiles[gres]
 		if !ok {
@@ -721,11 +719,10 @@ func managedWorkerNode(cluster *orchestrationv1alpha1.HeterogeneousCluster, name
 }
 
 func statuses(pools []orchestrationv1alpha1.WorkerPoolSpec, pods []corev1.Pod) []orchestrationv1alpha1.WorkerPoolStatus {
-	byPool := map[string]*orchestrationv1alpha1.WorkerPoolStatus{}
-	result := make([]orchestrationv1alpha1.WorkerPoolStatus, len(pools))
-	for i, pool := range pools {
-		result[i].Name = pool.Name
-		byPool[pool.Name] = &result[i]
+	result := poolStatus(pools)
+	byPool := make(map[string]*orchestrationv1alpha1.WorkerPoolStatus, len(result))
+	for i := range result {
+		byPool[result[i].Name] = &result[i]
 	}
 	for i := range pods {
 		status := byPool[pods[i].Labels[workerPoolLabel]]
@@ -740,6 +737,5 @@ func statuses(pools []orchestrationv1alpha1.WorkerPoolSpec, pods []corev1.Pod) [
 			status.Pending++
 		}
 	}
-	slices.SortFunc(result, func(a, b orchestrationv1alpha1.WorkerPoolStatus) int { return cmp.Compare(a.Name, b.Name) })
 	return result
 }

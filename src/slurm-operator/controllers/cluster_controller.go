@@ -37,7 +37,6 @@ const (
 	controlPlaneReplicas = int32(2)
 	mungeKey             = "munge.key"
 	jwtKey               = "jwt_hs256.key"
-	cloudBurstToken      = "token"
 )
 
 // +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters,verbs=get;list;watch;update;patch
@@ -168,7 +167,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	} else {
 		setCondition(status, orchestrationv1alpha1.ConditionWorkersReady, metav1.ConditionFalse, workers.Reason, workers.Message, cluster.Generation)
 	}
-	setLaterPhaseConditions(status, cluster.Generation)
 	if err := r.updateStatus(ctx, &cluster, status); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -288,17 +286,6 @@ func (r *ClusterReconciler) reconcileControllers(ctx context.Context, cluster *o
 					corev1.Volume{Name: "spool", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 				),
 			},
-		}
-		if secret := cluster.Spec.ControlPlane.Controllers.CloudBurstTokenSecretRef; secret != "" {
-			controller := &object.Spec.Template.Spec.Containers[1]
-			controller.Env = append(controller.Env,
-				corev1.EnvVar{Name: "CLOUD_BURST_URL", Value: "http://slurm-operator." + cluster.Namespace + ".svc:8082/v1/cloud-burst"},
-				corev1.EnvVar{Name: "CLOUD_BURST_NAMESPACE", Value: cluster.Namespace},
-				corev1.EnvVar{Name: "CLOUD_BURST_CLUSTER", Value: cluster.Name},
-				corev1.EnvVar{Name: "CLOUD_BURST_TOKEN_FILE", Value: "/run/secrets/cloud-burst/token"},
-			)
-			controller.VolumeMounts = append(controller.VolumeMounts, corev1.VolumeMount{Name: "cloud-burst-token", MountPath: "/run/secrets/cloud-burst/token", SubPath: cloudBurstToken, ReadOnly: true})
-			object.Spec.Template.Spec.Volumes = append(object.Spec.Template.Spec.Volumes, corev1.Volume{Name: "cloud-burst-token", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: secret, Items: []corev1.KeyToPath{{Key: cloudBurstToken, Path: cloudBurstToken, Mode: ptr.To[int32](0440)}}}}})
 		}
 		return controllerutil.SetControllerReference(cluster, object, r.Scheme)
 	})
@@ -467,7 +454,6 @@ func (r *ClusterReconciler) notReady(ctx context.Context, cluster *orchestration
 	setCondition(status, orchestrationv1alpha1.ConditionControlPlaneReady, metav1.ConditionFalse, reason, message, cluster.Generation)
 	setCondition(status, orchestrationv1alpha1.ConditionAccountingReady, metav1.ConditionFalse, reason, message, cluster.Generation)
 	setCondition(status, orchestrationv1alpha1.ConditionWorkersReady, metav1.ConditionUnknown, reason, "worker capacity is preserved until the control plane recovers", cluster.Generation)
-	setLaterPhaseConditions(status, cluster.Generation)
 	if err := r.updateStatus(ctx, cluster, status); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -493,15 +479,6 @@ func setCondition(status *orchestrationv1alpha1.HeterogeneousClusterStatus, cond
 		Message:            message,
 		ObservedGeneration: generation,
 	})
-}
-
-func setLaterPhaseConditions(status *orchestrationv1alpha1.HeterogeneousClusterStatus, generation int64) {
-	for _, conditionType := range []string{
-		orchestrationv1alpha1.ConditionCheckpointStoreReachable,
-		orchestrationv1alpha1.ConditionDegradedNodes,
-	} {
-		setCondition(status, conditionType, metav1.ConditionUnknown, "PhaseNotActive", "This condition is managed by a later implementation phase", generation)
-	}
 }
 
 func poolStatus(pools []orchestrationv1alpha1.WorkerPoolSpec) []orchestrationv1alpha1.WorkerPoolStatus {

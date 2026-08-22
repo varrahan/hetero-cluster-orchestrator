@@ -5,26 +5,21 @@ import (
 )
 
 const (
-	ConditionControlPlaneReady        = "ControlPlaneReady"
-	ConditionAccountingReady          = "AccountingReady"
-	ConditionWorkersReady             = "WorkersReady"
-	ConditionCheckpointStoreReachable = "CheckpointStoreReachable"
-	ConditionDegradedNodes            = "DegradedNodes"
+	ConditionControlPlaneReady = "ControlPlaneReady"
+	ConditionAccountingReady   = "AccountingReady"
+	ConditionWorkersReady      = "WorkersReady"
 )
 
 // HeterogeneousClusterSpec is the desired configuration for one Slurm cluster.
 // +kubebuilder:validation:XValidation:rule="self.workerPools.all(x, self.workerPools.filter(y, y.partition == x.partition).size() == 1)",message="worker pool partitions must be unique"
-// +kubebuilder:validation:XValidation:rule="!has(self.recovery) || !self.recovery.automaticReboot || self.workerPools.exists(p, p.profiles.size() > 0)",message="automatic recovery requires at least one worker profile"
 type HeterogeneousClusterSpec struct {
 	ControlPlane   ControlPlaneSpec   `json:"controlPlane"`
 	Authentication AuthenticationSpec `json:"authentication"`
-	Checkpoint     *CheckpointSpec    `json:"checkpoint,omitempty"`
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=8
 	// +listType=map
 	// +listMapKey=name
 	WorkerPools []WorkerPoolSpec `json:"workerPools"`
-	Recovery    *RecoverySpec    `json:"recovery,omitempty"`
 }
 
 type ControlPlaneSpec struct {
@@ -42,10 +37,6 @@ type ControllersSpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="stateSaveClaim is immutable"
 	StateSaveClaim string `json:"stateSaveClaim"`
-	// Optional bearer token used only by controller-side Resume/Suspend hooks.
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=253
-	CloudBurstTokenSecretRef string `json:"cloudBurstTokenSecretRef,omitempty"`
 }
 
 type AccountingSpec struct {
@@ -68,25 +59,6 @@ type AuthenticationSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	JWTKeySecretRef string `json:"jwtKeySecretRef"`
-}
-
-// +kubebuilder:validation:XValidation:rule="url(self.endpoint).getScheme() == 'https'",message="checkpoint endpoint must use HTTPS"
-type CheckpointSpec struct {
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=2048
-	Endpoint string `json:"endpoint"`
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=63
-	Bucket string `json:"bucket"`
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=253
-	CredentialsSecretRef string `json:"credentialsSecretRef"`
-	// +kubebuilder:default:="5m"
-	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s')",message="interval must be positive"
-	Interval metav1.Duration `json:"interval"`
-	// +kubebuilder:default:="2m"
-	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s')",message="failureGracePeriod must be positive"
-	FailureGracePeriod metav1.Duration `json:"failureGracePeriod"`
 }
 
 type WorkerPoolSpec struct {
@@ -133,14 +105,6 @@ type WorkerProfile struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`
 	// +kubebuilder:validation:MaxLength=253
 	DeviceClassName string `json:"deviceClassName"`
-}
-
-type RecoverySpec struct {
-	// +kubebuilder:default:=false
-	AutomaticReboot bool `json:"automaticReboot"`
-	// +kubebuilder:default:="2m"
-	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s')",message="verificationTimeout must be positive"
-	VerificationTimeout metav1.Duration `json:"verificationTimeout"`
 }
 
 type HeterogeneousClusterStatus struct {

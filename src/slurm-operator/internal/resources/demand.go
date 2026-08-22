@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"math"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,12 +28,11 @@ type Shape struct {
 }
 
 type Demand struct {
-	JobID     uint32
-	GroupID   uint32
-	PoolName  string
-	Partition string
-	Count     int64
-	Shape     Shape
+	JobID    uint32
+	GroupID  uint32
+	PoolName string
+	Count    int64
+	Shape    Shape
 }
 
 func Demands(jobs []slurm.PendingJob, pools []orchestrationv1alpha1.WorkerPoolSpec, footprints map[string]Footprint) ([]Demand, []error) {
@@ -80,7 +78,7 @@ func Demands(jobs []slurm.PendingJob, pools []orchestrationv1alpha1.WorkerPoolSp
 		if group == 0 {
 			group = job.ID
 		}
-		output = append(output, Demand{JobID: job.ID, GroupID: group, PoolName: pool.Name, Partition: pool.Partition, Count: count, Shape: shape})
+		output = append(output, Demand{JobID: job.ID, GroupID: group, PoolName: pool.Name, Count: count, Shape: shape})
 	}
 	return output, rejected
 }
@@ -234,10 +232,9 @@ func parseTRESValue(key, raw string) (int64, error) {
 	return int64(math.Ceil(number * multiplier)), nil
 }
 
-var nonAlphaNumeric = regexp.MustCompile(`[^a-z0-9]+`)
-
 func normalize(value string) string {
-	return strings.Trim(nonAlphaNumeric.ReplaceAllString(strings.ToLower(value), "_"), "_")
+	value = strings.ToLower(value)
+	return strings.Join(strings.FieldsFunc(value, func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') }), "_")
 }
 func divRoundUp(value, divisor int64) int64 {
 	if value <= 0 {
