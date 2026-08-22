@@ -53,42 +53,6 @@ spec:
                 - jwtKeySecretRef
                 - mungeKeySecretRef
                 type: object
-              checkpoint:
-                properties:
-                  bucket:
-                    maxLength: 63
-                    minLength: 1
-                    type: string
-                  credentialsSecretRef:
-                    maxLength: 253
-                    minLength: 1
-                    type: string
-                  endpoint:
-                    maxLength: 2048
-                    minLength: 1
-                    type: string
-                  failureGracePeriod:
-                    default: 2m
-                    type: string
-                    x-kubernetes-validations:
-                    - message: failureGracePeriod must be positive
-                      rule: duration(self) > duration('0s')
-                  interval:
-                    default: 5m
-                    type: string
-                    x-kubernetes-validations:
-                    - message: interval must be positive
-                      rule: duration(self) > duration('0s')
-                required:
-                - bucket
-                - credentialsSecretRef
-                - endpoint
-                - failureGracePeriod
-                - interval
-                type: object
-                x-kubernetes-validations:
-                - message: checkpoint endpoint must use HTTPS
-                  rule: url(self.endpoint).getScheme() == 'https'
               controlPlane:
                 properties:
                   accounting:
@@ -134,21 +98,6 @@ spec:
                 - controllers
                 - login
                 type: object
-              recovery:
-                properties:
-                  automaticReboot:
-                    default: false
-                    type: boolean
-                  verificationTimeout:
-                    default: 2m
-                    type: string
-                    x-kubernetes-validations:
-                    - message: verificationTimeout must be positive
-                      rule: duration(self) > duration('0s')
-                required:
-                - automaticReboot
-                - verificationTimeout
-                type: object
               workerPools:
                 items:
                   properties:
@@ -176,7 +125,7 @@ spec:
                         properties:
                           deviceClassName:
                             maxLength: 253
-                            pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?/[a-z0-9]([a-z0-9._-]*[a-z0-9])?$
+                            pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
                             type: string
                           gres:
                             maxLength: 64
@@ -205,10 +154,10 @@ spec:
                           - message: idleTimeout must be positive
                             rule: duration(self) > duration('0s')
                         maxWorkers:
-                          description: Eight pools at this ceiling stay within Slurm's
-                            65,536-node limit.
+                          description: Eight pools plus their admission catalog nodes
+                            stay within Slurm's 65,536-node limit.
                           format: int32
-                          maximum: 8192
+                          maximum: 8191
                           minimum: 1
                           type: integer
                         minReady:
@@ -245,9 +194,6 @@ spec:
             - message: worker pool partitions must be unique
               rule: self.workerPools.all(x, self.workerPools.filter(y, y.partition
                 == x.partition).size() == 1)
-            - message: automatic recovery requires at least one worker profile
-              rule: '!has(self.recovery) || !self.recovery.automaticReboot || self.workerPools.exists(p,
-                p.profiles.size() > 0)'
           status:
             properties:
               conditions:

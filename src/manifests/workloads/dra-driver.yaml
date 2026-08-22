@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orchestration-dra
+  namespace: slurm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: orchestration-dra
+rules:
+- apiGroups: [""]
+  resources: [nodes]
+  verbs: [get, list, watch]
+- apiGroups: [resource.k8s.io]
+  resources: [resourceclaims]
+  verbs: [get]
+- apiGroups: [resource.k8s.io]
+  resources: [resourceslices]
+  verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: orchestration-dra
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: orchestration-dra
+subjects:
+- kind: ServiceAccount
+  name: orchestration-dra
+  namespace: slurm-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: orchestration-dra
+  namespace: slurm-system
+spec:
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orchestration-dra
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orchestration-dra
+    spec:
+      serviceAccountName: orchestration-dra
+      nodeSelector:
+        orchestration.gputpu.io/compute: "true"
+      tolerations:
+      - key: orchestration.gputpu.io/compute
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: driver
+        image: orchestration-dra:dev
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: plugin
+          mountPath: /var/lib/kubelet/plugins/orchestration.gputpu.io
+        - name: registry
+          mountPath: /var/lib/kubelet/plugins_registry
+        - name: cdi
+          mountPath: /var/run/cdi
+        - name: nri
+          mountPath: /var/run/nri
+        - name: sys
+          mountPath: /sys
+          readOnly: true
+        - name: host
+          mountPath: /host
+          readOnly: true
+        - name: dev
+          mountPath: /dev
+      volumes:
+      - name: plugin
+        hostPath:
+          path: /var/lib/kubelet/plugins/orchestration.gputpu.io
+          type: DirectoryOrCreate
+      - name: registry
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: Directory
+      - name: cdi
+        hostPath:
+          path: /var/run/cdi
+          type: DirectoryOrCreate
+      - name: nri
+        hostPath:
+          path: /var/run/nri
+          type: Directory
+      - name: sys
+        hostPath:
+          path: /sys
+          type: Directory
+      - name: host
+        hostPath:
+          path: /
+          type: Directory
+      - name: dev
+        hostPath:
+          path: /dev
+          type: Directory

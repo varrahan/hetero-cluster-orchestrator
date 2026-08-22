@@ -30,6 +30,17 @@ rules:
   verbs:
   - get
 - apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - apps
   resources:
   - deployments
@@ -55,6 +66,8 @@ rules:
   verbs:
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - orchestration.gputpu.io
@@ -72,4 +85,14 @@ rules:
   - get
   - list
   - update
+  - watch
+- apiGroups:
+  - resource.k8s.io
+  resources:
+  - resourceclaims
+  verbs:
+  - create
+  - delete
+  - get
+  - list
   - watch

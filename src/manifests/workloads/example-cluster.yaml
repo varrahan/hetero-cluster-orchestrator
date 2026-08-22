@@ -28,4 +28,4 @@ spec:
     profiles:
     - name: rtx-4050
       gres: gpu:rtx_4050
-      deviceClassName: nvidia.gputpu.io/gpu
+      deviceClassName: nvidia.orchestration.gputpu.io

@@ -43,25 +43,23 @@ spec:
       containers:
       - name: operator
         image: slurm-operator:dev
-        imagePullPolicy: IfNotPresent
         env:
         - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        ports:
-        - name: metrics
-          containerPort: 8080
-        - name: probes
-          containerPort: 8081
+        - name: WORKER_IMAGE
+          value: slurm-worker:dev
+        - name: WORKER_MEMORY_HEADROOM
+          value: 256Mi
         readinessProbe:
           httpGet:
             path: /readyz
-            port: probes
+            port: 8081
         livenessProbe:
           httpGet:
             path: /healthz
-            port: probes
+            port: 8081
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

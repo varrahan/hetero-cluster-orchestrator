@@ -1,0 +1,35 @@
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cpu.orchestration.gputpu.io
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "orchestration.gputpu.io" && device.attributes["orchestration.gputpu.io"].kind == "cpu"
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: memory.orchestration.gputpu.io
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "orchestration.gputpu.io" && device.attributes["orchestration.gputpu.io"].kind == "memory"
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: nvidia.orchestration.gputpu.io
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "orchestration.gputpu.io" && device.attributes["orchestration.gputpu.io"].kind == "gpu"
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: opentpu.orchestration.gputpu.io
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "orchestration.gputpu.io" && device.attributes["orchestration.gputpu.io"].kind == "opentpu"
