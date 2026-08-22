@@ -136,6 +136,7 @@ Design: [scheduling and resources](scheduling-and-resources.md) and
 - [x] `P2-14` Support ordinary and Slurm heterogeneous jobs.
 - [x] `P2-15` Drain/delete idle Slurm nodes before Pod and claim cleanup.
 - [x] `P2-16` Adopt or clean orphaned workers safely after controller restart.
+
 ### Phase 2 tests and exit gates
 
 - [x] `P2-T01` Unit-test provider discovery, topology matching, TRES/GRES
