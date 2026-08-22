@@ -21,9 +21,9 @@ the target baseline. See the Kubernetes
 ## Dedicated compute nodes
 
 Strict worker pools select nodes labeled
-`orchestration.gputpu.io/compute-node=true`. Those nodes carry the taint
-`orchestration.gputpu.io/dedicated=compute:NoSchedule`; only platform agents,
-worker Pods, and verifier Jobs tolerate it.
+`orchestration.gputpu.io/compute=true`. They tolerate the optional
+`orchestration.gputpu.io/compute:NoSchedule` taint so administrators can keep
+unrelated Pods off compute nodes without changing the allocation contract.
 
 The CPU and memory providers reserve configurable system headroom before
 publishing devices. The default memory device is one exclusive 1 GiB unit.
@@ -31,25 +31,29 @@ Large hosts may choose a larger unit to reduce the number of published devices,
 trading allocation granularity for lower API volume.
 
 Every provider publishes the shared scalar attribute
-`orchestration.gputpu.io/numa-node`. GPU devices additionally publish UUID,
-normalized model, VRAM, PCI address, and PCIe root. CPU devices publish core and
-socket IDs. Memory devices publish their unit size. OpenTPU simulation slots
-publish profile, matrix size, buffer sizes, and required runtime version.
+`orchestration.gputpu.io/numaNode`. GPU devices additionally publish UUID,
+normalized model, VRAM, PCI address, and device path. CPU devices publish
+logical CPU, core, and socket IDs. Memory devices publish their unit size.
+OpenTPU simulation slots publish profile, matrix size, CPU count, memory, and
+shared-memory footprints.
+
+On WSL 2, NVIDIA allocation uses `/dev/dxg` and CDI bind-mounts the host driver
+files individually. Native Linux continues to use the NVIDIA CDI generator.
 
 ## Exact placement
 
 A worker uses one multi-request claim:
 
 1. request the required number of individual CPU devices;
-2. request `ceil(job memory / memoryUnit)` memory devices;
+2. request `ceil((job memory + worker headroom) / memoryUnit)` memory devices;
 3. optionally request NVIDIA GPU or OpenTPU simulation devices; and
-4. apply `matchAttribute: orchestration.gputpu.io/numa-node` across every
+4. apply `matchAttribute: orchestration.gputpu.io/numaNode` across every
    request.
 
-The worker Pod mirrors allocated CPU and rounded memory as equal Kubernetes
-requests and limits. CDI/NRI applies the selected CPU set and NUMA memory
-policy. Because each worker represents one NUMA cell and unrelated Pods are
-excluded, the claim is both the reservation and the binding authority.
+The worker Pod uses equal CPU and memory requests and limits. CDI injects the
+selected accelerator, while NRI applies the selected CPU set and NUMA memory
+policy. Because each worker represents one NUMA cell and DRA devices are
+exclusive, the claim is both the reservation and the binding authority.
 
 If a request exceeds one NUMA cell, the operator does not silently relax the
 policy. It leaves the Slurm component pending with a topology-unsatisfied reason.
@@ -90,13 +94,19 @@ deficit = eligible demand - ready idle capacity - capacity already provisioning
 ```
 
 It creates at most the pool's remaining `maxWorkers`. `minReady` defaults to
-zero so scarce GPUs are not claimed speculatively. Administrators may configure
-a warm pool for measured startup-latency needs.
+zero so scarce GPUs are not retained speculatively. A positive value preserves
+that many compatible ready workers after demand has created them; it does not
+invent a resource shape before Slurm supplies one.
 
-The operator poll is the v1 elasticity trigger. The `cloud-burst` binary is an
-optional adapter for Slurm `ResumeProgram` and `SuspendProgram`; when enabled it
-runs beside `slurmctld` and sends idempotent requests to the operator. It never
-uses Kubernetes credentials or mutates claims and Pods directly.
+For each pool with accelerator profiles, Slurm also receives one hidden
+`FUTURE` catalog node. It advertises every allowed typed GRES up to the DRA
+claim-size ceiling, but can never run a job. This lets native `sbatch` queue a
+typed request even when current dynamic nodes have different shapes. The
+partition's `DefMemPerNode` is the pool `memoryUnit`, so the catalog cannot
+inflate an omitted memory request. Only live `slurmd -Z` registrations represent
+allocatable inventory.
+
+The five-second operator poll is the sole elasticity trigger.
 
 ## Worker startup
 
@@ -110,15 +120,16 @@ The `gres-init` init container then:
 2. resolves each allocation back to its authoritative `ResourceSlice`;
 3. enumerates resources visible inside the prepared container;
 4. verifies driver, device UUID, model, NUMA cell, count, and device path;
-5. writes `gres.conf` and a dynamic-node configuration into an `emptyDir`;
-6. runs `slurmd -G` as a validation step; and
+5. fetches the configless cache, replaces its catalog `gres.conf` with the
+   allocation-specific file, and writes the dynamic-node configuration;
+6. runs `slurmd -G` against that exact cache as a validation step; and
 7. exits successfully only when the DRA and Slurm views agree.
 
 After `gres-init` succeeds, MUNGE starts and the main container registers with a
 unique Pod-derived hostname and explicit Pod IP:
 
 ```text
-slurmd -Z --conf "CPUs=8 Boards=1 SocketsPerBoard=1 CoresPerSocket=8 ThreadsPerCore=1 RealMemory=15360 Gres=gpu:rtx_4050:1 Feature=numa-0"
+slurmd -Z --conf "CPUs=8 Sockets=1 CoresPerSocket=8 ThreadsPerCore=1 RealMemory=15360 Gres=gpu:rtx_4050:1 Feature=pool_strict"
 ```
 
 Presenting the claimed NUMA cell as one Slurm socket keeps GRES affinity within
@@ -128,10 +139,10 @@ Slurm's socket-level scheduling rules.
 
 | DRA allocation | `gres.conf` / dynamic node | Validation |
 | --- | --- | --- |
-| NVIDIA RTX 4050 | `Name=gpu Type=rtx_4050 File=/dev/nvidia0 Cores=0-7` and `Gres=gpu:rtx_4050:1` | UUID and device path agree with NVML; `slurmd -G` passes |
+| NVIDIA RTX 4050 | `Name=gpu Type=rtx_4050 File=/dev/nvidia0 Cores=0-7` and `Gres=gpu:rtx_4050:1` | UUID, normalized model, and device path agree with `nvidia-smi`; `slurmd -G` passes |
 | OpenTPU M8 simulation slot | `Name=tpu Type=opentpu_m8 Count=1 Flags=CountOnly` and `Gres=tpu:opentpu_m8:1` | Injected profile and runtime version match the claim |
 | CPU cores | `CPUs`, socket/core fields, and feature `numa-<id>` | Effective process affinity equals claimed core IDs |
-| Memory units | `RealMemory` in MiB after configured Slurm headroom | Pod limit, DRA units, and NUMA memory policy agree |
+| Memory units | `RealMemory` is demanded memory excluding the separate `/dev/shm` footprint | Pod limit, rounded DRA units, and NUMA memory policy agree |
 
 GRES types and models use lowercase ASCII with punctuation normalized to
 underscores. A profile maps exactly one Slurm GRES name/type to one DRA
@@ -146,13 +157,18 @@ and memory isolation.
 
 ## Idempotency and cleanup
 
-- Claim, Pod, and dynamic Slurm node names contain the owning cluster, pool, and
-  Pod UID. Reconciliation adopts only resources carrying the matching owner UID.
+- The claim name is derived from its worker Pod, and the dynamic Slurm node uses
+  the Pod name. Kubernetes owner references and cluster/pool labels prevent
+  cross-cluster adoption.
 - A `gres-init` failure leaves no registered Slurm node. The operator records
   the reason, deletes the failed Pod and claim, and retries with bounded
   exponential backoff.
 - A ready worker becomes scale-down eligible only after it has been Slurm
-  `IDLE`, unreserved, and above `minReady` for five minutes.
+  `IDLE`, unreserved, and above `minReady` for the pool's `idleTimeout`.
+- An unready or unregistered worker with no remaining demand is removed
+  immediately; `idleTimeout` applies only to usable registered capacity.
+- A registered node whose claim is absent, unallocated, or no longer owned by
+  its Pod is drained instead of having allocation state recreated beneath it.
 - Scale-down drains the dynamic node, confirms it has no jobs or reservations,
   deletes it through Slurm, then deletes the Pod and claim.
 - An unreachable Slurm API disables scale-down and destructive cleanup.

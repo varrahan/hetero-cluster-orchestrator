@@ -17,7 +17,7 @@ framework-native. Node Problem Detector publishes the raw health condition;
 this project adds probe configuration and the narrowly scoped
 `watchdog-daemon`.
 
-The root `go.work` ties together the six Go modules in the
+The root `go.work` ties together the three active Go modules in the
 [repository layout](repository-layout.md), and the root `Makefile` delegates
 build, test, generation, manifest rendering, and verification without hiding
 module-specific commands. Add packages only when their phase needs them.
@@ -60,9 +60,8 @@ headroom.
 Add pending-demand polling, resource-profile mapping, multi-request claim
 generation, worker Pods, `gres-init`, and dynamic-node registration. Support
 ordinary and heterogeneous Slurm jobs. Add safe idle scale-down and
-reconstruction across controller restarts. Keep five-second operator polling as
-the default trigger; test `cloud-burst` only as an optional controller-side
-Resume/Suspend adapter.
+reconstruction across controller restarts. Use five-second operator polling as
+the elasticity trigger.
 
 Exit when CPU-only, RTX 4050, OpenTPU simulation, and mixed heterogeneous jobs
 receive exact same-NUMA resources; Slurm never advertises an unclaimed device;

@@ -105,59 +105,56 @@ Design: [scheduling and resources](scheduling-and-resources.md) and
 
 ### Unified DRA driver
 
-- [ ] `P2-01` Register one DRA driver/node plugin and recover prepared-device
+- [x] `P2-01` Register one DRA driver/node plugin and recover prepared-device
   state after restart.
-- [ ] `P2-02` Publish stable, qualified ResourceSlice identity and topology
+- [x] `P2-02` Publish stable, qualified ResourceSlice identity and topology
   attributes shared by every provider.
-- [ ] `P2-03` Discover exclusive physical CPU cores, reserve system headroom,
+- [x] `P2-03` Discover exclusive physical CPU cores, reserve system headroom,
   and prepare CPU pinning.
-- [ ] `P2-04` Publish fixed-size NUMA memory units, reserve system memory, and
+- [x] `P2-04` Publish fixed-size NUMA memory units, reserve system memory, and
   prepare the selected memory policy.
-- [ ] `P2-05` Discover NVIDIA devices by stable UUID/topology and prepare CDI
+- [x] `P2-05` Discover NVIDIA devices by stable UUID/topology and prepare CDI
   device/library injection.
-- [ ] `P2-06` Publish configured OpenTPU simulation slots with explicit
+- [x] `P2-06` Publish configured OpenTPU simulation slots with explicit
   CPU/memory/shared-memory footprints.
-- [ ] `P2-07` Implement idempotent prepare/unprepare with CDI/NRI state and
+- [x] `P2-07` Implement idempotent prepare/unprepare with CDI/NRI state and
   fail-closed recovery.
 
 ### Demand, workers, and translation
 
-- [ ] `P2-08` Poll Slurm demand every five seconds and preserve capacity when
+- [x] `P2-08` Poll Slurm demand every five seconds and preserve capacity when
   REST state is unavailable.
-- [ ] `P2-09` Parse TRES/GRES, normalize names, map profiles, and compute demand
+- [x] `P2-09` Parse TRES/GRES, normalize names, map profiles, and compute demand
   deficits.
-- [ ] `P2-10` Generate multi-request ResourceClaims with exact same-NUMA
+- [x] `P2-10` Generate multi-request ResourceClaims with exact same-NUMA
   constraints.
-- [ ] `P2-11` Reconcile Guaranteed-QoS worker Pods from allocated claims.
-- [ ] `P2-12` Implement `gres-init` claim validation and deterministic Slurm
+- [x] `P2-11` Reconcile Guaranteed-QoS worker Pods from allocated claims.
+- [x] `P2-12` Implement `gres-init` claim validation and deterministic Slurm
   CPU, memory, feature, GRES, and dynamic-node configuration.
-- [ ] `P2-13` Start MUNGE-authenticated `slurmd -Z` only after complete claim,
+- [x] `P2-13` Start MUNGE-authenticated `slurmd -Z` only after complete claim,
   topology, CDI/NRI, and GRES validation.
-- [ ] `P2-14` Support ordinary and Slurm heterogeneous jobs.
-- [ ] `P2-15` Drain/delete idle Slurm nodes before Pod and claim cleanup.
-- [ ] `P2-16` Adopt or clean orphaned workers safely after controller restart.
-- [ ] `P2-O01` Optional: implement and test controller-side `cloud-burst`
-  Resume/Suspend hooks without allowing direct Kubernetes mutation.
-
+- [x] `P2-14` Support ordinary and Slurm heterogeneous jobs.
+- [x] `P2-15` Drain/delete idle Slurm nodes before Pod and claim cleanup.
+- [x] `P2-16` Adopt or clean orphaned workers safely after controller restart.
 ### Phase 2 tests and exit gates
 
-- [ ] `P2-T01` Unit-test provider discovery, topology matching, TRES/GRES
+- [x] `P2-T01` Unit-test provider discovery, topology matching, TRES/GRES
   parsing, profile selection, and translation.
-- [ ] `P2-T02` Integration-test claim exclusivity, prepare/unprepare, scale-up,
+- [x] `P2-T02` Integration-test claim exclusivity, prepare/unprepare, scale-up,
   scale-down, restart reconstruction, and registration failure.
-- [ ] `P2-G01` CPU-only jobs receive exclusive CPU/memory on the requested NUMA
+- [x] `P2-G01` CPU-only jobs receive exclusive CPU/memory on the requested NUMA
   node with no GRES.
-- [ ] `P2-G02` RTX 4050 jobs receive the correct UUID/device files and execute a
+- [x] `P2-G02` RTX 4050 jobs receive the correct UUID/device files and execute a
   CUDA kernel.
-- [ ] `P2-G03` OpenTPU jobs receive the configured simulator profile and exact
+- [x] `P2-G03` OpenTPU jobs receive the configured simulator profile and exact
   footprint.
-- [ ] `P2-G04` Mixed heterogeneous jobs become runnable together.
-- [ ] `P2-G05` No-exact-NUMA-fit demand remains queued without relaxed
+- [x] `P2-G04` Mixed heterogeneous jobs become runnable together.
+- [x] `P2-G05` No-exact-NUMA-fit demand remains queued without relaxed
   placement.
-- [ ] `P2-G06` Claim/GRES mismatch prevents worker registration observably.
-- [ ] `P2-G07` Slurm never advertises a device without a live allocation.
-- [ ] `P2-G08` Idle timeout follows the required drain/delete/claim order.
-- [ ] `P2-G09` `make verify` succeeds.
+- [x] `P2-G06` Claim/GRES mismatch prevents worker registration observably.
+- [x] `P2-G07` Slurm never advertises a device without a live allocation.
+- [x] `P2-G08` Idle timeout follows the required drain/delete/claim order.
+- [x] `P2-G09` `make verify` succeeds.
 
 ## Phase 3 — Checkpoint v2
 

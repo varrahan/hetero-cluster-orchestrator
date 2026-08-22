@@ -177,12 +177,6 @@ spec:
   authentication:
     mungeKeySecretRef: slurm-munge
     jwtKeySecretRef: slurm-jwt
-  checkpoint:
-    endpoint: https://minio.example
-    bucket: checkpoints
-    credentialsSecretRef: checkpoint-minio
-    interval: 5m
-    failureGracePeriod: 120s
   workerPools:
     - name: strict
       partition: compute
@@ -200,14 +194,10 @@ spec:
         - name: opentpu-m8
           gres: tpu:opentpu_m8
           deviceClassName: opentpu-sim.gputpu.io
-  recovery:
-    automaticReboot: true
-    verificationTimeout: 2m
 ```
 
 Native CRD admission validation rejects static inconsistencies such as
-fractional memory units, duplicate pool partitions, or recovery enabled
-without a verifier profile. Before creating
+fractional memory units or duplicate pool partitions. Before creating
 workloads, the operator also rejects duplicate cross-pool Slurm GRES mappings
 and a missing or non-RWX state claim. These failures are reported through the
 control-plane and accounting conditions.
@@ -216,10 +206,9 @@ The referenced MUNGE Secret contains `munge.key`; the JWT Secret contains
 `jwt_hs256.key` with at least 32 bytes. The external MariaDB Secret contains
 `host`, `port`, `database`, `username`, and `password`.
 
-Status reports `ControlPlaneReady`, `AccountingReady`, `WorkersReady`,
-`CheckpointStoreReachable`, and `DegradedNodes`, plus per-pool ready, pending,
-and draining worker counts. Conditions include an observed generation and a
-human-readable reason.
+Status reports `ControlPlaneReady`, `AccountingReady`, and `WorkersReady`, plus
+per-pool ready, pending, and draining worker counts. Conditions include an
+observed generation and a human-readable reason.
 
 ## Node contract
 
