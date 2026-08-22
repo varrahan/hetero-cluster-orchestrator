@@ -19,7 +19,7 @@ Makefile recipes or project scripts.
 - Pins: Go 1.26.7, Kubernetes 1.35.6, Slurm 25.11.7, OpenTPU
   `ca5d381c93752a504e8de1fa10c9d51649853c70`.
 - Module prefix: `github.com/varrahan/hetero-cluster-orchestrater/src`.
-- Six Go modules are joined by `go.work` but must build independently.
+- Three Go modules are joined by `go.work` but must build independently.
 - Preserve unrelated work; the repository may already be dirty.
 
 ## System contract
@@ -43,20 +43,16 @@ external MariaDB/MinIO, and OpenTPU simulation.
 
 ## Ownership and dependency direction
 
-- `src/shared`: only cross-process IPC, storage, and checkpoint contracts; it
-  imports no project module.
 - `src/slurm-operator`: CRD, Slurm control plane, elastic workers, and recovery
   controllers.
 - `src/dra-driver`: one driver/image with NVIDIA, CPU, NUMA-memory, and OpenTPU
   providers.
-- `src/slurm-compute-node`: `gres-init`, `checkpoint-flusher`, and optional
-  `cloud-burst` binaries plus the worker image.
-- `src/quantization-engine`: node-wide OpenTPU numeric conversion only; it
-  never commits checkpoints.
-- `src/watchdog-daemon`: fixed node-local inventory, reboot, and verification
-  actions; it never mutates Slurm.
-- `src/python-workloads`: reference PyTorch/PyRTL adapters, not Go internals.
+- `src/slurm-compute-node`: `gres-init` plus the worker image.
+- `src/python-workloads`: the reference PyRTL adapter, not Go internals.
 - `src/manifests`: generated CRDs/RBAC and Kustomize deployment resources.
+
+Add `shared`, `quantization-engine`, `watchdog-daemon`, `checkpoint-flusher`,
+and PyTorch adapter code only when their implementation phase uses them.
 
 Deployable modules may import `shared`; they do not import one another. Use
 Kubernetes/Slurm APIs, Unix sockets, or versioned files across processes.
@@ -103,7 +99,7 @@ workers.
 ## Commands
 
 - `make versions`: print authoritative pins.
-- `make build`: build seven binaries under ignored `bin/`.
+- `make build`: build three binaries under ignored `bin/`.
 - `make test`: test every module independently plus Python syntax.
 - `make generate`: run all generators.
 - `make manifests`: render Kustomize without applying it.
