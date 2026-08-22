@@ -39,6 +39,14 @@ mkdir "$work/state"
 cat >"$work/kind.yaml" <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+$(if [[ ${ENABLE_NRI:-0} == 1 ]]; then cat <<'NRI'
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.nri.v1.nri"]
+    disable = false
+    disable_connections = false
+NRI
+fi)
 nodes:
 - role: control-plane
   extraMounts:
@@ -175,6 +183,7 @@ spec:
     memoryUnit: 1Gi
     scaling:
       maxWorkers: 4
+      idleTimeout: 15s
 EOF
 kubectl apply -f "$work/cluster.yaml"
 kubectl -n slurm-system wait --for=condition=ControlPlaneReady heterogeneouscluster/research --timeout=10m

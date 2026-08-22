@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+real=${GPU_REAL_DOCKER:?GPU_REAL_DOCKER is required}
+if [[ ${1:-} == run && " $* " == *" kindest/node:"* ]]; then
+  exec "$real" run --gpus all "${@:2}"
+fi
+exec "$real" "$@"
