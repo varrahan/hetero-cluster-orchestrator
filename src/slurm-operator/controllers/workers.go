@@ -101,6 +101,12 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 			return workerResult{}, err
 		}
 		podNames[pod.Name] = true
+		if !pod.DeletionTimestamp.IsZero() {
+			if err := r.cleanupWorker(ctx, pod, restClient, nodeByName[pod.Name]); err != nil {
+				return workerResult{}, err
+			}
+			continue
+		}
 		if !controllerutil.ContainsFinalizer(pod, workerFinalizer) {
 			copy := pod.DeepCopy()
 			controllerutil.AddFinalizer(copy, workerFinalizer)
@@ -109,11 +115,28 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 			}
 			pod.Finalizers = copy.Finalizers
 		}
-		if !pod.DeletionTimestamp.IsZero() || pod.Annotations[workerDrainAnnotation] == "true" || pod.Status.Phase == corev1.PodFailed {
+		if pod.Annotations[workerDrainAnnotation] == "true" || pod.Status.Phase == corev1.PodFailed {
 			if err := r.cleanupWorker(ctx, pod, restClient, nodeByName[pod.Name]); err != nil {
 				return workerResult{}, err
 			}
 			continue
+		}
+		if node := nodeByName[pod.Name]; node.Name != "" {
+			var claim resourceapi.ResourceClaim
+			claimName := pod.Annotations[workerClaimAnnotation]
+			var err error
+			if claimName != "" {
+				err = r.Reader.Get(ctx, types.NamespacedName{Namespace: pod.Namespace, Name: claimName}, &claim)
+			}
+			if err != nil && !apierrors.IsNotFound(err) {
+				return workerResult{}, err
+			}
+			if claimName == "" || apierrors.IsNotFound(err) || claim.Status.Allocation == nil || !metav1.IsControlledBy(&claim, pod) {
+				if err := r.cleanupWorker(ctx, pod, restClient, node); err != nil {
+					return workerResult{}, err
+				}
+				continue
+			}
 		}
 		if err := r.ensureWorkerClaim(ctx, cluster, pod); err != nil {
 			return workerResult{}, err
@@ -249,6 +272,12 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 			}
 			continue
 		}
+		if !podReady(pod) || !registered {
+			if err := r.cleanupWorker(ctx, pod, restClient, node); err != nil {
+				return workerResult{}, err
+			}
+			continue
+		}
 		if readyByPool[pool.Name] <= int(pool.Scaling.MinReady) {
 			continue
 		}
@@ -344,18 +373,21 @@ func (r *ClusterReconciler) createWorker(ctx context.Context, cluster *orchestra
 		Tolerations:    []corev1.Toleration{{Key: "orchestration.gputpu.io/compute", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}},
 		ResourceClaims: claimRef,
 		InitContainers: []corev1.Container{{
-			Name: "gres-init", Image: r.WorkerImage, Command: []string{"/usr/local/bin/gres-init"},
-			Resources: resources, VolumeMounts: workerMounts(false), Env: workerEnv(cluster, pool, claimName),
+			Name: "gres-init", Image: r.WorkerImage, Command: []string{"/bin/sh", "-ec"},
+			Args:      []string{"munged --force --key-file=/etc/munge/munge.key --socket=/run/munge/munge.socket.2; exec /usr/local/bin/gres-init"},
+			Resources: resources, VolumeMounts: workerMounts(), Env: workerEnv(cluster, pool, claimName),
+			SecurityContext: &corev1.SecurityContext{Privileged: ptr.To(true)},
 		}},
 		Containers: []corev1.Container{{
 			Name: "slurmd", Image: r.WorkerImage, Command: []string{"/bin/sh", "-ec"},
-			Args:      []string{"munged --force --key-file=/etc/munge/munge.key --socket=/run/munge/munge.socket.2; . /etc/slurm/worker.env; exec slurmd -D -Z --conf-server \"$SLURM_CONF_SERVER\" --conf \"$SLURMD_CONF\""},
-			Resources: resources, VolumeMounts: workerMounts(true), Env: workerEnv(cluster, pool, claimName),
+			Args:      []string{"munged --force --key-file=/etc/munge/munge.key --socket=/run/munge/munge.socket.2; . /etc/slurm/worker.env; exec slurmd -D -Z --conf \"$SLURMD_CONF\""},
+			Resources: resources, VolumeMounts: workerMounts(), Env: workerEnv(cluster, pool, claimName),
 			SecurityContext: &corev1.SecurityContext{Privileged: ptr.To(true)},
-			ReadinessProbe:  execProbe("/bin/sh", "-ec", "scontrol show node \"$HOSTNAME\" >/dev/null"),
+			ReadinessProbe:  execProbe("/bin/sh", "-ec", ". /etc/slurm/worker.env; scontrol show node \"$HOSTNAME\" >/dev/null"),
 		}},
 		Volumes: []corev1.Volume{
 			{Name: "worker-config", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			{Name: "slurm-spool", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 			{Name: "munge-key", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.MungeKeySecretRef, Items: []corev1.KeyToPath{{Key: mungeKey, Path: mungeKey, Mode: ptr.To[int32](0400)}}}}},
 			{Name: "munge-run", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 			{Name: "cgroup", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/sys/fs/cgroup", Type: ptr.To(corev1.HostPathDirectory)}}},
@@ -397,22 +429,19 @@ func workerEnv(cluster *orchestrationv1alpha1.HeterogeneousCluster, pool orchest
 		{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
 		{Name: "POD_IP", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}}},
 		{Name: "RESOURCE_CLAIM", Value: claim}, {Name: "WORKER_POOL", Value: pool.Name},
-		{Name: "SLURM_CONF_SERVER", Value: fmt.Sprintf("%s-slurmctld.%s.svc:%d", cluster.Name, cluster.Namespace, renderSlurmctldPort)},
+		{Name: "SLURM_CONF_SERVER", Value: slurmConfigServers(cluster)},
 	}
 }
 
-const renderSlurmctldPort = 6817
-
-func workerMounts(main bool) []corev1.VolumeMount {
-	mounts := []corev1.VolumeMount{{Name: "worker-config", MountPath: "/etc/slurm"}, {Name: "shared-memory", MountPath: "/dev/shm"}}
-	if main {
-		mounts = append(mounts,
-			corev1.VolumeMount{Name: "munge-key", MountPath: "/etc/munge/munge.key", SubPath: mungeKey, ReadOnly: true},
-			corev1.VolumeMount{Name: "munge-run", MountPath: "/run/munge"},
-			corev1.VolumeMount{Name: "cgroup", MountPath: "/sys/fs/cgroup"},
-		)
+func workerMounts() []corev1.VolumeMount {
+	return []corev1.VolumeMount{
+		{Name: "worker-config", MountPath: "/etc/slurm"},
+		{Name: "slurm-spool", MountPath: "/var/lib/slurmd"},
+		{Name: "shared-memory", MountPath: "/dev/shm"},
+		{Name: "munge-key", MountPath: "/etc/munge/munge.key", SubPath: mungeKey, ReadOnly: true},
+		{Name: "munge-run", MountPath: "/run/munge"},
+		{Name: "cgroup", MountPath: "/sys/fs/cgroup"},
 	}
-	return mounts
 }
 
 func (r *ClusterReconciler) ensureWorkerClaim(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, pod *corev1.Pod) error {
@@ -422,6 +451,9 @@ func (r *ClusterReconciler) ensureWorkerClaim(ctx context.Context, cluster *orch
 	}
 	var existing resourceapi.ResourceClaim
 	if err := r.Get(ctx, types.NamespacedName{Namespace: pod.Namespace, Name: claimName}, &existing); err == nil {
+		if !metav1.IsControlledBy(&existing, pod) {
+			return fmt.Errorf("worker ResourceClaim %s/%s is not controlled by Pod %s", pod.Namespace, claimName, pod.Name)
+		}
 		return nil
 	} else if !apierrors.IsNotFound(err) {
 		return err
@@ -653,7 +685,23 @@ func podReady(pod *corev1.Pod) bool {
 }
 
 func nodeIdle(node slurm.Node) bool {
-	return slices.Contains(node.State, "IDLE") && node.Reservation == "" && node.AllocCPUs == 0 && node.AllocMemory == 0 && strings.TrimSpace(node.GRESUsed) == ""
+	return slices.Contains(node.State, "IDLE") && node.Reservation == "" && node.AllocCPUs == 0 && node.AllocMemory == 0 && gresIdle(node.GRESUsed)
+}
+
+func gresIdle(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "(null)" || raw == "N/A" {
+		return true
+	}
+	for item := range strings.SplitSeq(raw, ",") {
+		item, _, _ = strings.Cut(strings.TrimSpace(item), "(")
+		separator := strings.LastIndexAny(item, ":=")
+		count, err := strconv.ParseInt(item[separator+1:], 10, 64)
+		if separator < 0 || err != nil || count != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func validateWorkerPod(cluster *orchestrationv1alpha1.HeterogeneousCluster, pod *corev1.Pod) error {

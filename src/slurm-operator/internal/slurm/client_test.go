@@ -28,7 +28,7 @@ func TestClient(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/slurm/v0.0.44/jobs/":
-			_, _ = w.Write([]byte(`{"jobs":[{"job_id":7,"het_job_id":{"number":0,"set":false,"infinite":false},"partition":"compute","state":{"current":["PENDING"]},"state_reason":"Resources"},{"job_id":8,"state":{"current":["RUNNING"]}}]}`))
+			_, _ = w.Write([]byte(`{"jobs":[{"job_id":7,"het_job_id":{"number":0,"set":false,"infinite":false},"partition":"compute","job_state":["PENDING"],"state_reason":"Resources"},{"job_id":8,"state":{"current":["RUNNING"]}}]}`))
 		case "/slurmdb/v0.0.44/clusters/":
 			_, _ = w.Write([]byte(`{"clusters":[{"name":"research"}]}`))
 		case "/slurm/v0.0.44/nodes/":

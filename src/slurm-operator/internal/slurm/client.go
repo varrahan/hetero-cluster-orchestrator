@@ -84,6 +84,20 @@ type jobState struct {
 	Current []string `json:"current"`
 }
 
+func (s *jobState) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &s.Current); err == nil {
+		return nil
+	}
+	var wrapped struct {
+		Current []string `json:"current"`
+	}
+	if err := json.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	s.Current = wrapped.Current
+	return nil
+}
+
 type apiError struct {
 	Description string `json:"description"`
 	Error       string `json:"error"`

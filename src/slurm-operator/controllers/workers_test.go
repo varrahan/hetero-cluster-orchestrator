@@ -13,6 +13,7 @@ import (
 
 	orchestrationv1alpha1 "github.com/varrahan/hetero-cluster-orchestrater/src/slurm-operator/api/v1alpha1"
 	resourceplan "github.com/varrahan/hetero-cluster-orchestrater/src/slurm-operator/internal/resources"
+	"github.com/varrahan/hetero-cluster-orchestrater/src/slurm-operator/internal/slurm"
 )
 
 func TestResourceClaimExactSameNUMA(t *testing.T) {
@@ -59,6 +60,9 @@ func TestCreateWorkerPodAndClaim(t *testing.T) {
 	if pod.Spec.Containers[0].SecurityContext == nil || pod.Spec.Containers[0].SecurityContext.Privileged == nil || !*pod.Spec.Containers[0].SecurityContext.Privileged {
 		t.Fatal("slurmd container is not privileged")
 	}
+	if !strings.Contains(pod.Spec.InitContainers[0].Args[0], "munged") || len(pod.Spec.InitContainers[0].VolumeMounts) != 6 || pod.Spec.InitContainers[0].SecurityContext == nil || pod.Spec.InitContainers[0].SecurityContext.Privileged == nil || !*pod.Spec.InitContainers[0].SecurityContext.Privileged {
+		t.Fatal("gres-init does not have the MUNGE and cgroup trust boundary")
+	}
 	var claim resourceapi.ResourceClaim
 	if err := testClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: pod.Annotations[workerClaimAnnotation]}, &claim); err != nil {
 		t.Fatal(err)
@@ -86,5 +90,22 @@ func TestCompleteDriverSlices(t *testing.T) {
 	}
 	if _, err := completeDriverSlices(slices[:2]); err == nil {
 		t.Fatal("incomplete current generation was accepted")
+	}
+}
+
+func TestNodeIdleWithZeroGRES(t *testing.T) {
+	if !nodeIdle(slurm.Node{State: []string{"IDLE", "DRAIN"}, GRESUsed: "tpu:opentpu_m8:0"}) {
+		t.Fatal("zero-count GRES kept an idle node busy")
+	}
+	if nodeIdle(slurm.Node{State: []string{"IDLE"}, GRESUsed: "gpu:rtx_4050:1(IDX:0)"}) {
+		t.Fatal("allocated GRES was considered idle")
+	}
+}
+
+func TestSlurmConfigServers(t *testing.T) {
+	cluster := validCluster("slurm-system")
+	want := "research-slurmctld-0.research-slurmctld.slurm-system.svc:6817,research-slurmctld-1.research-slurmctld.slurm-system.svc:6817"
+	if got := slurmConfigServers(cluster); got != want {
+		t.Fatalf("config servers = %q, want %q", got, want)
 	}
 }

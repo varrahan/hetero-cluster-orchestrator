@@ -42,6 +42,10 @@ type ControllersSpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="stateSaveClaim is immutable"
 	StateSaveClaim string `json:"stateSaveClaim"`
+	// Optional bearer token used only by controller-side Resume/Suspend hooks.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	CloudBurstTokenSecretRef string `json:"cloudBurstTokenSecretRef,omitempty"`
 }
 
 type AccountingSpec struct {
@@ -111,8 +115,8 @@ type ScalingSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	MinReady int32 `json:"minReady"`
 	// +kubebuilder:validation:Minimum=1
-	// Eight pools at this ceiling stay within Slurm's 65,536-node limit.
-	// +kubebuilder:validation:Maximum=8192
+	// Eight pools plus their admission catalog nodes stay within Slurm's 65,536-node limit.
+	// +kubebuilder:validation:Maximum=8191
 	MaxWorkers int32 `json:"maxWorkers"`
 	// +kubebuilder:default:="5m"
 	// +kubebuilder:validation:XValidation:rule="duration(self) > duration('0s')",message="idleTimeout must be positive"

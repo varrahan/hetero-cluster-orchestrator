@@ -13,8 +13,8 @@ import (
 func TestDemandsExactShapesAndRejections(t *testing.T) {
 	pools := []orchestrationv1alpha1.WorkerPoolSpec{{Name: "accelerated", Partition: "compute", MemoryUnit: "1Gi", Scaling: orchestrationv1alpha1.ScalingSpec{MaxWorkers: 4, IdleTimeout: metav1.Duration{Duration: time.Minute}}, Profiles: []orchestrationv1alpha1.WorkerProfile{{Name: "gpu", Gres: "gpu:rtx_4050", DeviceClassName: "nvidia.orchestration.gputpu.io"}, {Name: "tpu", Gres: "tpu:opentpu_m8", DeviceClassName: "opentpu.orchestration.gputpu.io"}}}}
 	jobs := []slurm.PendingJob{
-		{ID: 1, Partition: "compute", Reason: "Resources", CPUs: 8, NodeCount: 2, MemoryPerCPU: 512, TRESPerNode: "gres/gpu:rtx_4050=1"},
-		{ID: 2, Partition: "compute", Reason: "Resources", CPUs: 1, NodeCount: 1, TRESPerNode: "gres/tpu:opentpu_m8=1"},
+		{ID: 1, Partition: "compute", Reason: "PartitionConfig", CPUs: 8, NodeCount: 2, MemoryPerCPU: 512, TRESPerNode: "gres/gpu:rtx_4050=1"},
+		{ID: 2, Partition: "compute", Reason: "Resources", CPUs: 1, NodeCount: 1, TRESPerNode: "gres/tpu:opentpu_m8:1"},
 		{ID: 3, Partition: "compute", Reason: "Priority", CPUs: 64},
 		{ID: 4, Partition: "compute", Reason: "Resources", TRESPerNode: "gres/gpu:unknown=1"},
 	}

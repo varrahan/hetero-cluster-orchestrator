@@ -37,9 +37,10 @@ const (
 	controlPlaneReplicas = int32(2)
 	mungeKey             = "munge.key"
 	jwtKey               = "jwt_hs256.key"
+	cloudBurstToken      = "token"
 )
 
-// +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters,verbs=get;list;watch;update
+// +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters/status,verbs=get;update
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch;create;update
@@ -115,11 +116,20 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		func() error { return r.reconcileDatabase(ctx, &cluster, configHash) },
 		func() error { return r.reconcileService(ctx, &cluster, "slurmrestd", render.SlurmRESTPort) },
 		func() error { return r.reconcileREST(ctx, &cluster, configHash) },
-		func() error { return r.reconcileLogin(ctx, &cluster, configHash) },
 	} {
 		if err := reconcile(); err != nil {
 			return r.notReady(ctx, &cluster, "ReconcileFailed", err.Error(), err)
 		}
+	}
+	controllersReady, err := r.controllersReady(ctx, &cluster)
+	if err != nil {
+		return r.notReady(ctx, &cluster, "ReadinessCheckFailed", err.Error(), err)
+	}
+	if !controllersReady {
+		return r.notReady(ctx, &cluster, "ResourcesNotReady", "Slurm controllers are not at the current revision", nil)
+	}
+	if err := r.reconcileLogin(ctx, &cluster, configHash); err != nil {
+		return r.notReady(ctx, &cluster, "ReconcileFailed", err.Error(), err)
 	}
 
 	ready, err := r.workloadsReady(ctx, &cluster)
@@ -246,6 +256,7 @@ func (r *ClusterReconciler) reconcileControllers(ctx context.Context, cluster *o
 		object.Spec.Template = corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{Labels: componentLabels, Annotations: map[string]string{"orchestration.gputpu.io/config-hash": configHash}},
 			Spec: corev1.PodSpec{
+				AutomountServiceAccountToken:  ptr.To(false),
 				TerminationGracePeriodSeconds: ptr.To[int64](30),
 				Affinity:                      requiredAntiAffinity(componentLabels),
 				SecurityContext:               podFSGroup(64030),
@@ -261,7 +272,7 @@ func (r *ClusterReconciler) reconcileControllers(ctx context.Context, cluster *o
 						Name:    "slurmctld",
 						Image:   cluster.Spec.ControlPlane.Controllers.Image,
 						Command: []string{"slurmctld"},
-						Args:    []string{"-D", "-f", "/etc/slurm/slurm.conf"},
+						Args:    []string{"-D", "-i", "-f", "/etc/slurm/slurm.conf"},
 						Env:     []corev1.EnvVar{{Name: "SLURM_CONF", Value: "/etc/slurm/slurm.conf"}},
 						Ports:   []corev1.ContainerPort{{Name: "slurmctld", ContainerPort: render.SlurmctldPort}},
 						VolumeMounts: append(slurmMounts(),
@@ -277,6 +288,17 @@ func (r *ClusterReconciler) reconcileControllers(ctx context.Context, cluster *o
 					corev1.Volume{Name: "spool", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 				),
 			},
+		}
+		if secret := cluster.Spec.ControlPlane.Controllers.CloudBurstTokenSecretRef; secret != "" {
+			controller := &object.Spec.Template.Spec.Containers[1]
+			controller.Env = append(controller.Env,
+				corev1.EnvVar{Name: "CLOUD_BURST_URL", Value: "http://slurm-operator." + cluster.Namespace + ".svc:8082/v1/cloud-burst"},
+				corev1.EnvVar{Name: "CLOUD_BURST_NAMESPACE", Value: cluster.Namespace},
+				corev1.EnvVar{Name: "CLOUD_BURST_CLUSTER", Value: cluster.Name},
+				corev1.EnvVar{Name: "CLOUD_BURST_TOKEN_FILE", Value: "/run/secrets/cloud-burst/token"},
+			)
+			controller.VolumeMounts = append(controller.VolumeMounts, corev1.VolumeMount{Name: "cloud-burst-token", MountPath: "/run/secrets/cloud-burst/token", SubPath: cloudBurstToken, ReadOnly: true})
+			object.Spec.Template.Spec.Volumes = append(object.Spec.Template.Spec.Volumes, corev1.Volume{Name: "cloud-burst-token", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: secret, Items: []corev1.KeyToPath{{Key: cloudBurstToken, Path: cloudBurstToken, Mode: ptr.To[int32](0440)}}}}})
 		}
 		return controllerutil.SetControllerReference(cluster, object, r.Scheme)
 	})
@@ -356,7 +378,6 @@ func (r *ClusterReconciler) reconcileREST(ctx context.Context, cluster *orchestr
 }
 
 func (r *ClusterReconciler) reconcileLogin(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, configHash string) error {
-	confServer := fmt.Sprintf("%s-slurmctld-0.%s-slurmctld.%s.svc:%d", cluster.Name, cluster.Name, cluster.Namespace, render.SlurmctldPort)
 	return r.reconcileDeployment(ctx, cluster, "login", cluster.Spec.ControlPlane.Login.Replicas, configHash, corev1.PodSpec{
 		SecurityContext: podFSGroup(64030),
 		Containers: []corev1.Container{
@@ -365,7 +386,7 @@ func (r *ClusterReconciler) reconcileLogin(ctx context.Context, cluster *orchest
 				Name:           "login",
 				Image:          cluster.Spec.ControlPlane.Controllers.Image,
 				Command:        []string{"sackd"},
-				Args:           []string{"-D", "--conf-server", confServer},
+				Args:           []string{"-D", "--conf-server", slurmConfigServers(cluster)},
 				Env:            []corev1.EnvVar{{Name: "RUNTIME_DIRECTORY", Value: "/run/slurm"}, {Name: "SLURM_CONF", Value: "/run/slurm/conf/slurm.conf"}},
 				VolumeMounts:   []corev1.VolumeMount{{Name: "munge-run", MountPath: "/run/munge"}, {Name: "slurm-run", MountPath: "/run/slurm"}},
 				ReadinessProbe: execProbe("squeue", "--noheader"),
@@ -392,21 +413,29 @@ func (r *ClusterReconciler) reconcileDeployment(ctx context.Context, cluster *or
 }
 
 func (r *ClusterReconciler) workloadsReady(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) (bool, error) {
-	var controllers appsv1.StatefulSet
-	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: name(cluster, "slurmctld")}, &controllers); err != nil {
-		return false, err
-	}
-	if controllers.Status.ReadyReplicas != controlPlaneReplicas {
-		return false, nil
+	ready, err := r.controllersReady(ctx, cluster)
+	if err != nil || !ready {
+		return ready, err
 	}
 	for component, replicas := range map[string]int32{"slurmdbd": 1, "slurmrestd": controlPlaneReplicas, "login": cluster.Spec.ControlPlane.Login.Replicas} {
 		var deployment appsv1.Deployment
 		if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: name(cluster, component)}, &deployment); err != nil {
 			return false, err
 		}
-		if deployment.Status.ReadyReplicas != replicas {
+		if deployment.Status.ObservedGeneration != deployment.Generation || deployment.Status.UpdatedReplicas != replicas || deployment.Status.ReadyReplicas != replicas {
 			return false, nil
 		}
+	}
+	return true, nil
+}
+
+func (r *ClusterReconciler) controllersReady(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster) (bool, error) {
+	var controllers appsv1.StatefulSet
+	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: name(cluster, "slurmctld")}, &controllers); err != nil {
+		return false, err
+	}
+	if controllers.Status.ObservedGeneration != controllers.Generation || controllers.Status.CurrentRevision != controllers.Status.UpdateRevision || controllers.Status.UpdatedReplicas != controlPlaneReplicas || controllers.Status.ReadyReplicas != controlPlaneReplicas {
+		return false, nil
 	}
 	return true, nil
 }
@@ -490,6 +519,11 @@ func objectMeta(cluster *orchestrationv1alpha1.HeterogeneousCluster, component s
 
 func name(cluster *orchestrationv1alpha1.HeterogeneousCluster, component string) string {
 	return cluster.Name + "-" + component
+}
+
+func slurmConfigServers(cluster *orchestrationv1alpha1.HeterogeneousCluster) string {
+	service := cluster.Name + "-slurmctld"
+	return fmt.Sprintf("%s-0.%s.%s.svc:%d,%s-1.%s.%s.svc:%d", service, service, cluster.Namespace, render.SlurmctldPort, service, service, cluster.Namespace, render.SlurmctldPort)
 }
 
 func labels(cluster *orchestrationv1alpha1.HeterogeneousCluster, component string) map[string]string {

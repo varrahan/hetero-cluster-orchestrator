@@ -67,6 +67,9 @@ func main() {
 	if err := (&controllers.ClusterReconciler{Client: manager.GetClient(), Reader: manager.GetAPIReader(), Scheme: manager.GetScheme(), Recorder: manager.GetEventRecorderFor("slurm-operator"), WorkerImage: workerImage, WorkerMemoryHeadroom: headroom.Value()}).SetupWithManager(manager); err != nil {
 		exit(err)
 	}
+	if err := manager.Add(&cloudBurstServer{reader: manager.GetAPIReader(), client: manager.GetClient()}); err != nil {
+		exit(err)
+	}
 	if err := manager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		exit(err)
 	}

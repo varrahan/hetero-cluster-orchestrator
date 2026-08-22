@@ -54,7 +54,7 @@ func Demands(jobs []slurm.PendingJob, pools []orchestrationv1alpha1.WorkerPoolSp
 	var output []Demand
 	var rejected []error
 	for _, job := range jobs {
-		if job.Reason != "Resources" && job.Reason != "ReqNodeNotAvail" {
+		if job.Reason != "Resources" && job.Reason != "ReqNodeNotAvail" && job.Reason != "PartitionConfig" {
 			continue
 		}
 		if job.RequiredNodes != "" {
@@ -181,6 +181,11 @@ func parseTRES(raw string) (map[string]int64, error) {
 			continue
 		}
 		key, valueRaw, ok := strings.Cut(item, "=")
+		if !ok && strings.HasPrefix(item, "gres/") {
+			if last := strings.LastIndex(item, ":"); last > len("gres/") {
+				key, valueRaw, ok = item[:last], item[last+1:], true
+			}
+		}
 		if !ok {
 			return nil, fmt.Errorf("invalid TRES %q", item)
 		}

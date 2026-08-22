@@ -156,13 +156,26 @@ func TestReconcileCreateUpdateRestartAndRepair(t *testing.T) {
 	if !hasVolume(controllers.Spec.Template.Spec.Volumes, "munge-key") || !hasVolume(controllers.Spec.Template.Spec.Volumes, "jwt") {
 		t.Fatal("slurmctld is missing required authentication material")
 	}
+	if controllers.Spec.Template.Spec.AutomountServiceAccountToken == nil || *controllers.Spec.Template.Spec.AutomountServiceAccountToken || !hasVolume(controllers.Spec.Template.Spec.Volumes, "cloud-burst-token") || !hasVolumeMount(controllers.Spec.Template.Spec.Containers[1].VolumeMounts, "cloud-burst-token") {
+		t.Fatal("slurmctld cloud-burst credentials are not isolated")
+	}
+	if !slices.Contains(controllers.Spec.Template.Spec.Containers[1].Args, "-i") {
+		t.Fatal("slurmctld does not tolerate absent dynamic-node state during recovery")
+	}
 	if got := controllers.Spec.Template.Spec.InitContainers; len(got) != 1 || got[0].Name != "state-permissions" || !hasVolumeMount(got[0].VolumeMounts, "state") {
 		t.Fatal("slurmctld does not initialize shared state ownership")
 	}
 	originalUID := controllers.UID
+	controllers.Status.ObservedGeneration = controllers.Generation
 	controllers.Status.Replicas = 2
+	controllers.Status.UpdatedReplicas = 2
 	controllers.Status.ReadyReplicas = 2
+	controllers.Status.CurrentRevision = "test"
+	controllers.Status.UpdateRevision = "test"
 	if err := testClient.Status().Update(ctx, &controllers); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reconciler.Reconcile(ctx, request); err != nil {
 		t.Fatal(err)
 	}
 	for component, replicas := range map[string]int32{"slurmdbd": 1, "slurmrestd": 2, "login": 1} {
@@ -177,6 +190,8 @@ func TestReconcileCreateUpdateRestartAndRepair(t *testing.T) {
 			t.Fatalf("%s MUNGE volume present = %v, want %v", component, got, want)
 		}
 		deployment.Status.Replicas = replicas
+		deployment.Status.ObservedGeneration = deployment.Generation
+		deployment.Status.UpdatedReplicas = replicas
 		deployment.Status.ReadyReplicas = replicas
 		if err := testClient.Status().Update(ctx, &deployment); err != nil {
 			t.Fatal(err)
@@ -275,7 +290,7 @@ func validCluster(namespace string) *orchestrationv1alpha1.HeterogeneousCluster 
 		ObjectMeta: metav1.ObjectMeta{Name: "research", Namespace: namespace},
 		Spec: orchestrationv1alpha1.HeterogeneousClusterSpec{
 			ControlPlane: orchestrationv1alpha1.ControlPlaneSpec{
-				Controllers: orchestrationv1alpha1.ControllersSpec{Image: "slurm:test", StateSaveClaim: "state"},
+				Controllers: orchestrationv1alpha1.ControllersSpec{Image: "slurm:test", StateSaveClaim: "state", CloudBurstTokenSecretRef: "cloud-burst"},
 				Accounting:  orchestrationv1alpha1.AccountingSpec{DatabaseSecretRef: "database"},
 				Login:       orchestrationv1alpha1.LoginSpec{Replicas: 1},
 			},
