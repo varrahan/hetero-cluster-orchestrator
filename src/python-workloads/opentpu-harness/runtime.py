@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import builtins
-import config  # type: ignore[import-not-found]
 import os
 import runpy
 import sys
 from pathlib import Path
+
 import pyrtl
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -27,6 +28,7 @@ def main() -> None:
 
     root = Path(os.environ.get("OPENTPU_ROOT", "/opt/opentpu"))
     sys.path.insert(0, str(root))
+    import config  # type: ignore[import-not-found]
 
     # The pinned OpenTPU revision uses PyRTL's former mult_signed helper name.
     pyrtl.helperfuncs.mult_signed = pyrtl.signed_mult
