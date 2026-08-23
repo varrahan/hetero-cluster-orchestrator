@@ -123,11 +123,6 @@ func writeWSLNVIDIACDI(path string, inv *inventory) error {
 }
 
 func atomicJSON(path string, value any, mode os.FileMode) error {
-	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
@@ -137,16 +132,16 @@ func atomicJSON(path string, value any, mode os.FileMode) error {
 	}
 	temporaryName := temporary.Name()
 	defer os.Remove(temporaryName)
+	defer temporary.Close()
 	if err := temporary.Chmod(mode); err != nil {
-		temporary.Close()
 		return err
 	}
-	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
+	encoder := json.NewEncoder(temporary)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
 		return err
 	}
 	if err := temporary.Sync(); err != nil {
-		temporary.Close()
 		return err
 	}
 	if err := temporary.Close(); err != nil {

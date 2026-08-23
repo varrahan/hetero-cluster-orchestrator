@@ -11,7 +11,6 @@ RUN CGO_ENABLED=0 GOWORK=off go build -trimpath -ldflags='-s -w' -o /dra-driver 
 FROM nvcr.io/nvidia/k8s/container-toolkit:v${NVIDIA_TOOLKIT_VERSION} AS nvidia
 
 FROM ubuntu:24.04
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /dra-driver /usr/local/bin/dra-driver
 COPY --from=nvidia /artifacts/deb/usr/bin/nvidia-ctk /usr/bin/nvidia-ctk
 COPY --from=nvidia /artifacts/deb/usr/bin/nvidia-cdi-hook /usr/bin/nvidia-cdi-hook

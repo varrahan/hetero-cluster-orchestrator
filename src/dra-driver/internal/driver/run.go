@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -23,10 +24,6 @@ const (
 )
 
 func Run() error {
-	return run()
-}
-
-func run() error {
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		return errors.New("NODE_NAME is required")
