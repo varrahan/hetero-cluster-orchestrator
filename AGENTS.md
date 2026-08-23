@@ -14,7 +14,7 @@ Makefile recipes or project scripts.
 
 ## Current snapshot
 
-- Phases 0 and 1 are complete. Phase 2 allocation and elastic workers are next.
+- Phases 0 through 3 are complete. Phase 4 fault recovery is next.
 - Delivery status and task IDs are authoritative in `docs/progress.md`.
 - Pins: Go 1.26.7, Kubernetes 1.35.6, Slurm 25.11.7, OpenTPU
   `ca5d381c93752a504e8de1fa10c9d51649853c70`.
@@ -91,6 +91,9 @@ workers.
   boundaries. Never log Secret or tensor contents.
 - Generate CRDs, deepcopy code, and RBAC with `make generate`; do not hand-edit
   generated output.
+- Keep Go `*_test.go` files under `src/test/`, mirroring their production path
+  after `src/`; never place tests beside implementation files. `make test`
+  stages the mirrored files into disposable module copies before running them.
 - Update the relevant doc when changing a public contract. Update this file
   only when its stable snapshot, boundaries, phase, or commands change.
 - Update `docs/progress.md` only after the relevant implementation and checks
@@ -100,7 +103,8 @@ workers.
 
 - `make versions`: print authoritative pins.
 - `make build`: build three binaries under ignored `bin/`.
-- `make test`: test every module independently plus Python syntax.
+- `make test`: test every module independently from centralized `src/test`
+  sources, plus Python syntax and unit tests.
 - `make generate`: run all generators.
 - `make manifests`: render Kustomize without applying it.
 - `make phase1-e2e`: run the disposable kind-based Phase 1 exit gates.

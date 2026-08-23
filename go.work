@@ -3,7 +3,10 @@ go 1.26.0
 toolchain go1.26.7
 
 use (
+	./src/checkpoint-flusher
 	./src/slurm-operator
 	./src/dra-driver
+	./src/quantization-engine
+	./src/shared
 	./src/slurm-compute-node
 )

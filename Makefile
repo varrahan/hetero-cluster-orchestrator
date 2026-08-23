@@ -1,6 +1,9 @@
 include versions.mk
 
 GO_MODULES := \
+	src/shared \
+	src/checkpoint-flusher \
+	src/quantization-engine \
 	src/slurm-operator \
 	src/dra-driver \
 	src/slurm-compute-node
@@ -11,24 +14,29 @@ JSON_FILES := $(shell find docs -type f -name '*.json' -print)
 SHELL_FILES := $(shell find test -type f -name '*.sh' -print 2>/dev/null)
 
 .PHONY: all build test generate manifests verify fmt fmt-check vet versions \
-	verify-versions manifests-check generated-check python-check json-check shell-check phase1-e2e phase2-e2e phase2-gpu-e2e
+	verify-versions manifests-check generated-check python-check python-test ring-lib json-check shell-check \
+	phase1-e2e phase2-e2e phase2-gpu-e2e phase3-e2e
 
 all: build
 
-build: python-check
+build: python-check ring-lib
 	@mkdir -p "$(BIN_DIR)"
 	@cd src/slurm-operator && GOWORK=off go build -o "$(BIN_DIR)/slurm-operator" .
 	@cd src/dra-driver && GOWORK=off go build -o "$(BIN_DIR)/dra-driver" .
 	@cd src/slurm-compute-node && GOWORK=off go build -o "$(BIN_DIR)" ./cmd/...
+	@cd src/checkpoint-flusher && GOWORK=off go build -o "$(BIN_DIR)/checkpoint-flusher" .
+	@cd src/quantization-engine && GOWORK=off go build -o "$(BIN_DIR)/quantization-engine" .
 
-test: python-check
-	@assets="$$(cd src/slurm-operator && GOWORK=off go tool setup-envtest use -p path 1.35.0 --bin-dir "$(CURDIR)/.cache/envtest")"; \
+test: python-check python-test
+	@staged="$$(mktemp -d)"; trap 'rm -rf "$$staged"' EXIT; \
+	cp -R src "$$staged/"; cp -R src/test/. "$$staged/src/"; \
+	assets="$$(cd src/slurm-operator && GOWORK=off go tool setup-envtest use -p path 1.35.0 --bin-dir "$(CURDIR)/.cache/envtest")"; \
 	set -e; for module in $(GO_MODULES); do \
 		printf 'testing %s\n' "$$module"; \
 		if test "$$module" = src/slurm-operator; then \
-			(cd "$$module" && KUBEBUILDER_ASSETS="$$assets" GOWORK=off go test ./...); \
+			(cd "$$staged/$$module" && KUBEBUILDER_ASSETS="$$assets" GOWORK=off go test ./...); \
 		else \
-			(cd "$$module" && GOWORK=off go test ./...); \
+			(cd "$$staged/$$module" && GOWORK=off go test ./...); \
 		fi; \
 	done
 
@@ -52,6 +60,14 @@ phase2-e2e:
 phase2-gpu-e2e:
 	./test/phase2/gpu-e2e.sh
 
+phase3-e2e:
+	./test/phase3/e2e.sh
+
+ring-lib:
+	@mkdir -p "$(BIN_DIR)"
+	@$(CC) -std=c11 -O2 -Wall -Wextra -Werror -fPIC -shared \
+		-o "$(BIN_DIR)/libaiorch_ring.so" src/shared/ringabi/abi.c
+
 fmt:
 	gofmt -w $(GO_FILES)
 
@@ -69,6 +85,10 @@ vet:
 
 python-check:
 	@python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(path).read_bytes(), filename=path) for path in "$(PYTHON_FILES)".split()]'
+
+python-test: ring-lib
+	@AIORCH_RING_LIBRARY="$(BIN_DIR)/libaiorch_ring.so" PYTHONPATH=src/python-workloads \
+		python3 -m unittest discover -s src/test/python-workloads/checkpointing -p 'test_*.py'
 
 json-check:
 	@set -e; for file in $(JSON_FILES); do python3 -m json.tool "$$file" >/dev/null; done
