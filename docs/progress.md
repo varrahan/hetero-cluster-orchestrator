@@ -164,38 +164,38 @@ Design: [checkpointing](checkpointing.md) and
 
 ### Checkpoint implementation
 
-- [ ] `P3-01` Implement manifest v2 Go types plus JSON Schema and semantic
+- [x] `P3-01` Implement manifest v2 Go types plus JSON Schema and semantic
   validation for paths, bounds, shapes, dtypes, byte ranges, hashes, and
   compatibility.
-- [ ] `P3-02` Stream immutable raw `.bin` shards to and from MinIO with hashes
+- [x] `P3-02` Stream immutable raw `.bin` shards to and from MinIO with hashes
   and validated object paths.
-- [ ] `P3-03` Implement conditional `.complete` commit creation so partial or
+- [x] `P3-03` Implement conditional `.complete` commit creation so partial or
   conflicting uploads never become visible.
-- [ ] `P3-04` Implement newest-compatible committed checkpoint discovery and
+- [x] `P3-04` Implement newest-compatible committed checkpoint discovery and
   restore.
-- [ ] `P3-05` Implement the bounded, namespaced worker-local IPC/shared-memory
+- [x] `P3-05` Implement the bounded, namespaced worker-local IPC/shared-memory
   contract.
-- [ ] `P3-06` Implement `checkpoint-flusher` save, commit, restore, and cleanup
+- [x] `P3-06` Implement `checkpoint-flusher` save, commit, restore, and cleanup
   Unix APIs.
-- [ ] `P3-07` Implement the quantization-engine versioned Unix protocol and
+- [x] `P3-07` Implement the quantization-engine versioned Unix protocol and
   bounded FP32/BF16 to OpenTPU INT8 conversion.
-- [ ] `P3-08` Implement thin PyTorch, CPU, and PyRTL checkpoint adapters.
-- [ ] `P3-09` Save and restore model, optimizer, scheduler, RNG, and data-cursor
+- [x] `P3-08` Implement thin PyTorch, CPU, and PyRTL checkpoint adapters.
+- [x] `P3-09` Save and restore model, optimizer, scheduler, RNG, and data-cursor
   state.
-- [ ] `P3-10` Provide the batch wrapper for step-zero, periodic, and `USR1`
+- [x] `P3-10` Provide the batch wrapper for step-zero, periodic, and `USR1`
   checkpoints, `--requeue`, and pre-work restore.
 
 ### Phase 3 tests and exit gates
 
-- [ ] `P3-T01` Test schema, semantic coverage, IPC bounds/ownership, hashing,
+- [x] `P3-T01` Test schema, semantic coverage, IPC bounds/ownership, hashing,
   conditional commit, and compatibility selection.
-- [ ] `P3-G01` A distributed heterogeneous job resumes on different healthy
+- [x] `P3-G01` A distributed heterogeneous job resumes on different healthy
   workers with matching tensors and training state.
-- [ ] `P3-G02` Killing a rank during upload leaves the new step invisible and
+- [x] `P3-G02` Killing a rank during upload leaves the new step invisible and
   restores the previous commit.
-- [ ] `P3-G03` Requeued work resumes after the last checkpoint instead of step
+- [x] `P3-G03` Requeued work resumes after the last checkpoint instead of step
   zero.
-- [ ] `P3-G04` `make verify` succeeds.
+- [x] `P3-G04` `make verify` succeeds.
 
 ## Phase 4 — Fault recovery
 

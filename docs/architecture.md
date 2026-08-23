@@ -134,9 +134,9 @@ operations for its own node. It cannot select another node, alter Slurm jobs,
 or execute arbitrary annotation content.
 
 The node-wide `quantization-engine` DaemonSet converts canonical floating-point
-buffers to and from OpenTPU INT8 buffers. It shares only a namespaced
-`/dev/shm/ai-orch` mount and a versioned Unix-socket protocol with workers; it
-does not own checkpoint storage or commits.
+buffers to and from OpenTPU INT8 buffers. It shares only namespaced, bounded
+atomic ring files under `/dev/shm/ai-orch` and a versioned Unix-socket protocol
+with workers; it does not own checkpoint storage or commits.
 
 ### Elastic worker
 
@@ -155,6 +155,9 @@ The worker does not start when any claim, topology, CDI, or GRES validation is
 incomplete.
 
 ## Public API
+
+`spec.checkpointing.objectStoreSecretRef` optionally enables the worker-local
+checkpoint service using a Secret-mounted HTTPS MinIO configuration.
 
 The initial public API is a single namespaced resource. Native Slurm remains the
 only job-submission API, so no workload CRD is introduced.

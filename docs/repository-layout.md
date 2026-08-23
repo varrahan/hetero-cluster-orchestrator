@@ -59,6 +59,11 @@ The root `Makefile` delegates a small common command set:
 - `make verify` checks version pins, generated-file drift, formatting, builds,
   tests, vet, JSON syntax, and rendered manifests.
 
+Go tests live under `src/test/` in paths mirroring their production packages.
+`make test` overlays them onto disposable module copies so same-package tests
+retain access to unexported implementation without mixing test and production
+files in the source tree.
+
 It does not hide module-specific toolchains or implement a second build system.
 Exact Go, Kubernetes, Slurm, and OpenTPU revisions live in the root
 `versions.mk`; floating tags are not release inputs.
@@ -110,9 +115,18 @@ These are reference workloads and conformance harnesses, not shared production
 libraries:
 
 - `opentpu-harness` wraps the upstream PyRTL simulator.
+- `checkpointing` provides the thin CPU, PyTorch, and PyRTL adapters plus the
+  batch lifecycle helper.
 
 Requirements are pinned per workload. A Go module must not shell out to these
 sources as an internal API.
+
+### Phase 3 checkpoint modules
+
+`src/shared` owns only versioned checkpoint, optimizer, and atomic-ring wire
+contracts. `src/checkpoint-flusher` owns MinIO, hashing, commit, restore, and
+worker-local staging. `src/quantization-engine` owns bounded OpenTPU numeric
+conversion and has no storage credentials.
 
 ### `src/manifests`
 

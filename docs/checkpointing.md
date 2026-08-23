@@ -69,6 +69,8 @@ The manifest contains no tensor bytes. It describes:
 Optimizer tensor state such as momentum or variance belongs in `tensors` with
 `role: optimizer_tensor`. `optimizer_state.json` contains scalars and the mapping
 from optimizer slots to those tensors; it must not embed weights or pickle data.
+Its closed public format is
+[`checkpoint-optimizer-state-v1.schema.json`](schemas/checkpoint-optimizer-state-v1.schema.json).
 
 An abbreviated manifest is shown below. Hashes are shortened only for display;
 real manifests require 64 lowercase hexadecimal characters.
@@ -189,8 +191,15 @@ Each worker has one `checkpoint-flusher` process listening on the Unix socket
 processes. Requests include `X-Slurm-Job-Id`; v1 assumes one trusted
 administrative tenant.
 
+Checkpointing is enabled by setting
+`spec.checkpointing.objectStoreSecretRef`. The referenced Secret contains
+`endpoint`, `bucket`, `accessKey`, `secretKey`, and an optional `ca.crt`.
+The endpoint must be HTTPS and credentials are mounted only into the flusher.
+
 | Operation | Behavior |
 | --- | --- |
+| `POST /v1/transactions/{transaction}` | Create one or two bounded ring streams for the local job and rank |
+| `DELETE /v1/transactions/{transaction}` | Abort and remove the job-owned local staging directory |
 | `PUT /v1/checkpoints/{run}/{step}/chunks/{chunk}` | Stream raw bytes, compute SHA-256, upload the immutable object, return a receipt |
 | `GET /v1/checkpoints/{run}/{step}/chunks/{chunk}` | Validate manifest authorization and stream the verified byte range |
 | `GET /v1/checkpoints/{run}/latest` | Return the newest valid commit and manifest metadata |
@@ -203,10 +212,13 @@ request. MinIO calls use TLS, bounded retries, deadlines, and prefix-scoped
 credentials from a Kubernetes Secret.
 
 `checkpoint-flusher` owns storage, hashing, restore, and commit behavior. The
-node-wide `quantization-engine` owns only OpenTPU numeric conversion. The two
-use a versioned Unix socket and bounded mapped files under
-`/dev/shm/ai-orch/<cluster-uid>/<job-id>/<rank>/<transaction-id>`; process-shared
-semaphores live in those files, so the Pods do not require `hostIPC`.
+node-wide `quantization-engine` owns only OpenTPU numeric conversion through
+`POST /v1/conversions`. The processes use versioned Unix sockets and bounded
+SPSC ring files under
+`/dev/shm/ai-orch/<cluster-uid>/<job-id>/<rank>/<transaction-id>`. Monotonic
+64-bit head and tail counters occupy separate cache lines and publish slots with
+release/acquire atomics. A dead process cannot strand a lock; socket cancellation
+abandons the uncommitted transaction. The Pods do not require `hostIPC`.
 
 ## Hardware adapters
 
@@ -262,6 +274,12 @@ marker is written and the save is ignored. Requeue proceeds using the previous
 complete checkpoint. On restart, loaders scan commit objects from highest step
 to lowest, verify marker, manifest, compatibility, and all assigned chunks, and
 fall back to the next valid step if validation fails.
+
+Automatic compatibility is fail-closed: model ID and schema, dataset, image
+digest, framework and version, and every requested adapter version must match
+exactly. A manifest may advertise additional adapters so the same canonical
+checkpoint can move between supported hardware. V1 restores rank RNG state only
+when the world size is unchanged.
 
 The initial application state should be committed as step zero before expensive
 work begins. Without any valid checkpoint, the job can only start from its
