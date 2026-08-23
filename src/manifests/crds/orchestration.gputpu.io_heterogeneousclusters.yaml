@@ -53,6 +53,20 @@ spec:
                 - jwtKeySecretRef
                 - mungeKeySecretRef
                 type: object
+              checkpointing:
+                description: CheckpointingSpec enables application-level checkpointing
+                  for worker Pods.
+                properties:
+                  objectStoreSecretRef:
+                    description: |-
+                      ObjectStoreSecretRef names a Secret containing endpoint, bucket,
+                      accessKey, secretKey, and an optional ca.crt.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - objectStoreSecretRef
+                type: object
               controlPlane:
                 properties:
                   accounting:

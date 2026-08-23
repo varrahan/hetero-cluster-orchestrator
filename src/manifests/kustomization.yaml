@@ -7,4 +7,5 @@ resources:
 - workloads/operator.yaml
 - workloads/deviceclasses.yaml
 - workloads/dra-driver.yaml
+- workloads/quantization-engine.yaml
 - workloads/worker-rbac.yaml
