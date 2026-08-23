@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"flag"
 	"fmt"
 	"os"
@@ -38,7 +39,7 @@ func main() {
 	if workerImage == "" {
 		exit(fmt.Errorf("WORKER_IMAGE is required"))
 	}
-	headroom, err := resource.ParseQuantity(envOr("WORKER_MEMORY_HEADROOM", "256Mi"))
+	headroom, err := resource.ParseQuantity(cmp.Or(os.Getenv("WORKER_MEMORY_HEADROOM"), "256Mi"))
 	if err != nil || headroom.Value() < 0 {
 		exit(fmt.Errorf("WORKER_MEMORY_HEADROOM must be a non-negative Kubernetes quantity"))
 	}
@@ -76,13 +77,6 @@ func main() {
 	if err := manager.Start(ctrl.SetupSignalHandler()); err != nil {
 		exit(err)
 	}
-}
-
-func envOr(name, fallback string) string {
-	if value := os.Getenv(name); value != "" {
-		return value
-	}
-	return fallback
 }
 
 func exit(err error) {

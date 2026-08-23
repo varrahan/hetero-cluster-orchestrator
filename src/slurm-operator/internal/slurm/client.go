@@ -30,6 +30,7 @@ type PendingJob struct {
 	ID            uint32
 	Partition     string
 	Reason        string
+	Requeued      bool
 	Priority      int64
 	EligibleTime  int64
 	HetJobID      uint32
@@ -172,9 +173,10 @@ func (c *Client) PendingJobs(ctx context.Context) ([]PendingJob, error) {
 		if len(states) == 0 {
 			states = job.JobState.Current
 		}
-		if slices.Contains(states, "PENDING") {
+		requeued := requeuedState(states, job.Reason)
+		if slices.Contains(states, "PENDING") || requeued {
 			pending = append(pending, PendingJob{
-				ID: job.ID, Partition: job.Partition, Reason: job.Reason,
+				ID: job.ID, Partition: job.Partition, Reason: job.Reason, Requeued: requeued,
 				Priority: job.Priority.Value, EligibleTime: job.EligibleTime.Value,
 				HetJobID: uint32(job.HetJobID.Value),
 				CPUs:     job.CPUs.Value, NodeCount: job.NodeCount.Value, Tasks: job.Tasks.Value,
@@ -188,6 +190,12 @@ func (c *Client) PendingJobs(ctx context.Context) ([]PendingJob, error) {
 		}
 	}
 	return pending, nil
+}
+
+func requeuedState(states []string, reason string) bool {
+	return slices.Contains(states, "REQUEUED") ||
+		slices.Contains(states, "CANCELLED") &&
+			(slices.Contains(states, "REQUEUE_HOLD") || slices.Contains(states, "SPECIAL_EXIT") || strings.EqualFold(reason, "job_requeued_in_held_state"))
 }
 
 func (c *Client) AccountingReady(ctx context.Context, clusterName string) error {

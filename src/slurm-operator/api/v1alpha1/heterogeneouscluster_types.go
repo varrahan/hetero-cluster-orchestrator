@@ -15,11 +15,21 @@ const (
 type HeterogeneousClusterSpec struct {
 	ControlPlane   ControlPlaneSpec   `json:"controlPlane"`
 	Authentication AuthenticationSpec `json:"authentication"`
+	Checkpointing  *CheckpointingSpec `json:"checkpointing,omitempty"`
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=8
 	// +listType=map
 	// +listMapKey=name
 	WorkerPools []WorkerPoolSpec `json:"workerPools"`
+}
+
+// CheckpointingSpec enables application-level checkpointing for worker Pods.
+type CheckpointingSpec struct {
+	// ObjectStoreSecretRef names a Secret containing endpoint, bucket,
+	// accessKey, secretKey, and an optional ca.crt.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	ObjectStoreSecretRef string `json:"objectStoreSecretRef"`
 }
 
 type ControlPlaneSpec struct {

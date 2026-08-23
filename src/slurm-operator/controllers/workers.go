@@ -392,11 +392,43 @@ func (r *ClusterReconciler) createWorker(ctx context.Context, cluster *orchestra
 			{Name: "shared-memory", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: sharedMemory}}},
 		},
 	}
+	if cluster.Spec.Checkpointing != nil {
+		checkpointMounts := []corev1.VolumeMount{
+			{Name: "checkpoint-socket", MountPath: "/run/gputpu-checkpoint"},
+			{Name: "checkpoint-shm", MountPath: "/dev/shm/ai-orch"},
+			{Name: "quantization-socket", MountPath: "/run/gputpu-quantization"},
+		}
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, checkpointMounts...)
+		checkpointResources := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi")}
+		pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{
+			Name: "checkpoint-flusher", Image: r.WorkerImage, Command: []string{"/usr/local/bin/checkpoint-flusher"},
+			Env: []corev1.EnvVar{
+				{Name: "CHECKPOINT_CLUSTER_UID", Value: string(cluster.UID)},
+				{Name: "CHECKPOINT_SHM_BUDGET_BYTES", Value: strconv.FormatInt(sharedMemory.Value(), 10)},
+			},
+			Resources: corev1.ResourceRequirements{Requests: checkpointResources.DeepCopy(), Limits: checkpointResources.DeepCopy()},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "checkpoint-socket", MountPath: "/run/gputpu-checkpoint"},
+				{Name: "checkpoint-shm", MountPath: "/dev/shm/ai-orch"},
+				{Name: "checkpoint-store", MountPath: "/run/secrets/checkpoint-store", ReadOnly: true},
+			},
+			SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
+			ReadinessProbe:  execProbe("test", "-S", "/run/gputpu-checkpoint/flusher.sock"),
+		})
+		pod.Spec.Volumes = append(pod.Spec.Volumes,
+			corev1.Volume{Name: "checkpoint-socket", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			corev1.Volume{Name: "checkpoint-shm", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev/shm/ai-orch", Type: ptr.To(corev1.HostPathDirectoryOrCreate)}}},
+			corev1.Volume{Name: "quantization-socket", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/run/gputpu-quantization", Type: ptr.To(corev1.HostPathDirectoryOrCreate)}}},
+			corev1.Volume{Name: "checkpoint-store", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Checkpointing.ObjectStoreSecretRef}}},
+		)
+	}
 	for i := range pod.Spec.InitContainers {
 		pod.Spec.InitContainers[i].Resources.Claims = claimUse
 	}
 	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].Resources.Claims = claimUse
+		if pod.Spec.Containers[i].Name == "slurmd" {
+			pod.Spec.Containers[i].Resources.Claims = claimUse
+		}
 	}
 	if err := r.Create(ctx, pod); err != nil {
 		return nil, fmt.Errorf("create worker Pod: %w", err)

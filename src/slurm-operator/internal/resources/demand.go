@@ -3,7 +3,6 @@ package resources
 import (
 	"cmp"
 	"fmt"
-	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,7 +51,7 @@ func Demands(jobs []slurm.PendingJob, pools []orchestrationv1alpha1.WorkerPoolSp
 	var output []Demand
 	var rejected []error
 	for _, job := range jobs {
-		if job.Reason != "Resources" && job.Reason != "ReqNodeNotAvail" && job.Reason != "PartitionConfig" {
+		if !job.Requeued && job.Reason != "Resources" && job.Reason != "ReqNodeNotAvail" && job.Reason != "PartitionConfig" {
 			continue
 		}
 		if job.RequiredNodes != "" {
@@ -207,29 +206,23 @@ func parseTRESValue(key, raw string) (int64, error) {
 	if key != "mem" {
 		return strconv.ParseInt(raw, 10, 64)
 	}
-	if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
-		return value << 20, nil
+	if _, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		raw += "Mi"
+	} else {
+		if len(raw) < 2 {
+			return 0, err
+		}
+		suffix := strings.ToUpper(raw[len(raw)-1:])
+		if !strings.Contains("KMGT", suffix) {
+			return 0, fmt.Errorf("unknown memory suffix")
+		}
+		raw = raw[:len(raw)-1] + suffix + "i"
 	}
-	upper := strings.ToUpper(raw)
-	suffix := upper[len(upper)-1:]
-	number, err := strconv.ParseFloat(upper[:len(upper)-1], 64)
+	quantity, err := resource.ParseQuantity(raw)
 	if err != nil {
 		return 0, err
 	}
-	multiplier := float64(1 << 20)
-	switch suffix {
-	case "K":
-		multiplier = 1 << 10
-	case "M":
-		multiplier = 1 << 20
-	case "G":
-		multiplier = 1 << 30
-	case "T":
-		multiplier = 1 << 40
-	default:
-		return 0, fmt.Errorf("unknown memory suffix")
-	}
-	return int64(math.Ceil(number * multiplier)), nil
+	return quantity.Value(), nil
 }
 
 func normalize(value string) string {
