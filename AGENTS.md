@@ -91,9 +91,9 @@ workers.
   boundaries. Never log Secret or tensor contents.
 - Generate CRDs, deepcopy code, and RBAC with `make generate`; do not hand-edit
   generated output.
-- Keep Go `*_test.go` files under `src/test/`, mirroring their production path
-  after `src/`; never place tests beside implementation files. `make test`
-  stages the mirrored files into disposable module copies before running them.
+- Keep Go `*_test.go` files and smoke programs under `src/test/`, mirroring
+  their production path after `src/`; never place tests beside implementation
+  files. `make test` stages Go tests into disposable module copies.
 - Update the relevant doc when changing a public contract. Update this file
   only when its stable snapshot, boundaries, phase, or commands change.
 - Update `docs/progress.md` only after the relevant implementation and checks

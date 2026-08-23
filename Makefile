@@ -9,7 +9,7 @@ GO_MODULES := \
 	src/slurm-compute-node
 BIN_DIR := $(CURDIR)/bin
 GO_FILES := $(shell find src -type f -name '*.go' -print)
-PYTHON_FILES := $(shell find src/python-workloads -type f -name '*.py' -print)
+PYTHON_FILES := $(shell find src -type f -name '*.py' -print)
 JSON_FILES := $(shell find docs -type f -name '*.json' -print)
 SHELL_FILES := $(shell find test -type f -name '*.sh' -print 2>/dev/null)
 

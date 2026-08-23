@@ -59,10 +59,10 @@ The root `Makefile` delegates a small common command set:
 - `make verify` checks version pins, generated-file drift, formatting, builds,
   tests, vet, JSON syntax, and rendered manifests.
 
-Go tests live under `src/test/` in paths mirroring their production packages.
-`make test` overlays them onto disposable module copies so same-package tests
-retain access to unexported implementation without mixing test and production
-files in the source tree.
+Go tests and smoke programs live under `src/test/` in paths mirroring their
+production packages. `make test` overlays Go tests onto disposable module
+copies so same-package tests retain access to unexported implementation without
+mixing test and production files in the source tree.
 
 It does not hide module-specific toolchains or implement a second build system.
 Exact Go, Kubernetes, Slurm, and OpenTPU revisions live in the root

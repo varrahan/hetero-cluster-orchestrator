@@ -31,8 +31,9 @@ COPY --from=build /checkpoint-flusher /usr/local/bin/checkpoint-flusher
 COPY --from=build /libaiorch_ring.so /usr/local/lib/libaiorch_ring.so
 COPY src/shared/ringabi/abi.h /usr/local/include/aiorch_ring.h
 COPY src/python-workloads/checkpointing /usr/lib/python3/dist-packages/checkpointing
+COPY src/test/python-workloads/checkpointing/smoke.py /usr/lib/python3/dist-packages/checkpointing/smoke.py
 COPY src/python-workloads/opentpu-harness/runtime.py /usr/local/bin/opentpu-runtime.py
-COPY src/slurm-compute-node/cuda-smoke.py /usr/local/bin/cuda-smoke.py
+COPY src/test/slurm-compute-node/cuda-smoke.py /usr/local/bin/cuda-smoke.py
 ENV PYTHONPATH=/opt/opentpu:/opt/ai-orch \
     AIORCH_RING_LIBRARY=/usr/local/lib/libaiorch_ring.so \
     LD_LIBRARY_PATH=/usr/local/lib
