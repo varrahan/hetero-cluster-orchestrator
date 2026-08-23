@@ -101,3 +101,18 @@ func TestClientFailsClosed(t *testing.T) {
 		t.Fatal("trailing REST payload accepted")
 	}
 }
+
+func TestRequeuedStateIncludesHeldTransition(t *testing.T) {
+	if !requeuedState([]string{"CANCELLED", "REQUEUE_HOLD"}, "None") {
+		t.Fatal("REST requeue-hold transition was not recognized")
+	}
+	if !requeuedState([]string{"CANCELLED"}, "job_requeued_in_held_state") {
+		t.Fatal("held requeue transition was not recognized")
+	}
+	if requeuedState([]string{"PENDING", "REQUEUE_HOLD"}, "JobHeldUser") {
+		t.Fatal("settled held job was recognized as transition demand")
+	}
+	if requeuedState([]string{"CANCELLED"}, "None") {
+		t.Fatal("ordinary cancellation was recognized as a requeue")
+	}
+}

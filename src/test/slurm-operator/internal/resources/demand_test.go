@@ -29,3 +29,22 @@ func TestDemandsExactShapesAndRejections(t *testing.T) {
 		t.Fatalf("OpenTPU footprint = %#v", demands[1])
 	}
 }
+
+func TestDemandsIncludesRequeuedJobWithoutWaitReason(t *testing.T) {
+	jobs := []slurm.PendingJob{{ID: 7, Partition: "compute", Requeued: true, CPUs: 1, MemoryPerNode: 1024}}
+	pools := []orchestrationv1alpha1.WorkerPoolSpec{{Name: "compute", Partition: "compute", MemoryUnit: "1Gi"}}
+
+	demands, rejected := Demands(jobs, pools, nil)
+	if len(rejected) != 0 || len(demands) != 1 || demands[0].JobID != 7 {
+		t.Fatalf("Demands() = %#v, %v; want one demand for job 7", demands, rejected)
+	}
+}
+
+func TestParseTRESMemoryUsesKubernetesQuantities(t *testing.T) {
+	if value, err := parseTRESValue("mem", "1.5G"); err != nil || value != 3<<29 {
+		t.Fatalf("parseTRESValue() = %d, %v", value, err)
+	}
+	if _, err := parseTRESValue("mem", ""); err == nil {
+		t.Fatal("empty memory value was accepted")
+	}
+}
