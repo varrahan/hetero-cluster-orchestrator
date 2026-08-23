@@ -3,6 +3,7 @@ set -euo pipefail
 
 cluster_name=${KIND_CLUSTER:-phase2}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$root/test/lib.sh"
 keep=${KEEP_KIND:-0}
 
 cleanup() {
@@ -10,21 +11,31 @@ cleanup() {
     kind delete cluster --name "$cluster_name" >/dev/null 2>&1 || true
   fi
 }
+diagnose() {
+  local node output
+  echo "Phase 2 live gate failed near line $1" >&2
+  if declare -p login >/dev/null 2>&1; then
+    "${login[@]}" squeue --all --format='%.18i %.9T %.40R' >&2 || true
+    if [[ -n ${tpu_job:-} ]]; then
+      "${login[@]}" scontrol show job "$tpu_job" >&2 || true
+      "${login[@]}" sacct --jobs "$tpu_job" --format=JobID,State,ExitCode,NodeList >&2 || true
+      node=$("${login[@]}" sacct --noheader --allocations --jobs "$tpu_job" --format=NodeList 2>/dev/null | awk 'NF {print $1; exit}')
+      output=$("${login[@]}" scontrol show job "$tpu_job" 2>/dev/null | awk -F= '/StdOut=/{print $2; exit}')
+      if [[ -n $node && -n $output ]]; then
+        kubectl -n slurm-system exec "$node" -c slurmd -- cat "$output" >&2 || true
+      fi
+    fi
+  fi
+  kubectl -n slurm-system get pods -o wide >&2 || true
+  kubectl -n slurm-system get resourceclaims -o wide >&2 || true
+  kubectl -n slurm-system get events --sort-by=.lastTimestamp | tail -40 >&2 || true
+}
 trap cleanup EXIT
-trap 'echo "Phase 2 live gate failed near line $LINENO" >&2' ERR
+trap 'diagnose "$LINENO"' ERR
 
 for command in docker kind kubectl python3; do
   command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
 done
-
-retry() {
-  local deadline=$((SECONDS + $1))
-  shift
-  until "$@"; do
-    (( SECONDS < deadline )) || return 1
-    sleep 2
-  done
-}
 
 KIND_CLUSTER="$cluster_name" ENABLE_NRI=1 KEEP_KIND=1 "$root/test/phase1/e2e.sh"
 
@@ -116,7 +127,17 @@ wait_job() {
   state=$("${login[@]}" sacct --noheader --allocations --jobs "$job" --format=State 2>/dev/null | awk 'NF {print $1; exit}')
   [[ $state == COMPLETED ]]
 }
-job_running() { "${login[@]}" squeue --noheader --jobs "$1" --states=RUNNING | grep -q "$1"; }
+job_running() {
+  local state
+  state=$("${login[@]}" squeue --noheader --jobs "$1" --format='%T' 2>/dev/null | awk 'NF {print $1; exit}')
+  [[ $state == RUNNING ]] && return 0
+  [[ -n $state ]] && return 1
+  state=$("${login[@]}" sacct --noheader --allocations --jobs "$1" --format=State 2>/dev/null | awk 'NF {print $1; exit}')
+  case $state in
+    COMPLETED | FAILED | CANCELLED | TIMEOUT | NODE_FAIL | OUT_OF_MEMORY) return 2 ;;
+  esac
+  return 1
+}
 
 live_tpu_allocation() {
   local node claim

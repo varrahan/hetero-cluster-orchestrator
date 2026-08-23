@@ -4,6 +4,7 @@ set -euo pipefail
 cluster_name=${KIND_CLUSTER:-phase1}
 kind_image=${KIND_NODE_IMAGE:-kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$root/test/lib.sh"
 work=$(mktemp -d)
 port_forward_pid=
 paused_node=
@@ -193,15 +194,6 @@ login=(kubectl -n slurm-system exec deployment/research-login -c login --)
 job_id=$("${login[@]}" sbatch --parsable --wrap='sleep 600')
 job_id=${job_id%%;*}
 "${login[@]}" squeue --noheader --jobs "$job_id" | grep -q "$job_id"
-
-retry() {
-  local deadline=$((SECONDS + $1))
-  shift
-  until "$@"; do
-    (( SECONDS < deadline )) || return 1
-    sleep 2
-  done
-}
 
 accounting_has_job() {
   "${login[@]}" sacct --noheader --allocations --jobs "$job_id" --format=JobIDRaw 2>/dev/null | grep -Eq "^[[:space:]]*$job_id"
