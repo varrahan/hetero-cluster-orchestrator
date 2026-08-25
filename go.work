@@ -9,4 +9,5 @@ use (
 	./src/quantization-engine
 	./src/shared
 	./src/slurm-compute-node
+	./src/watchdog-daemon
 )

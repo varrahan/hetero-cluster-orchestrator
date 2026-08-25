@@ -177,7 +177,7 @@ func (s *server) handleCheckpoint(response http.ResponseWriter, request *http.Re
 			writeError(response, http.StatusBadRequest, "invalid_manifest", errorText(err, "manifest route identity or CPU coordinator mismatch"))
 			return
 		}
-		marker, err := s.store.commit(ctx, data, manifest)
+		marker, err := s.store.commit(ctx, data, manifest, job)
 		if err != nil {
 			writeError(response, http.StatusConflict, "commit_rejected", err.Error())
 			return

@@ -24,8 +24,9 @@ const operationTimeout = 120 * time.Second
 var commitName = regexp.MustCompile(`^step_([0-9]+)\.complete$`)
 
 type objectStore struct {
-	client *minio.Client
-	bucket string
+	client     *minio.Client
+	bucket     string
+	clusterUID string
 }
 
 type latestResult struct {
@@ -83,7 +84,7 @@ func (s objectStore) compareExistingHash(ctx context.Context, key string, info m
 	return checkpointapi.Receipt{StoragePath: storagePath, ByteLength: size, SHA256: wantedHash, ETag: strings.Trim(info.ETag, `"`)}, nil
 }
 
-func (s objectStore) commit(ctx context.Context, manifestBytes []byte, manifest *checkpointapi.Manifest) (checkpointapi.CommitMarker, error) {
+func (s objectStore) commit(ctx context.Context, manifestBytes []byte, manifest *checkpointapi.Manifest, jobID uint64) (checkpointapi.CommitMarker, error) {
 	optimizer, err := s.readArtifact(ctx, manifest.RunID, manifest.GlobalStep, manifest.State.OptimizerMetadata)
 	if err != nil {
 		return checkpointapi.CommitMarker{}, fmt.Errorf("optimizer metadata: %w", err)
@@ -102,7 +103,7 @@ func (s objectStore) commit(ctx context.Context, manifestBytes []byte, manifest 
 	if err := s.putImmutable(ctx, manifestKey, manifestBytes, "application/json"); err != nil {
 		return checkpointapi.CommitMarker{}, fmt.Errorf("store manifest: %w", err)
 	}
-	marker := checkpointapi.CommitMarker{CheckpointVersion: checkpointapi.Version, GlobalStep: manifest.GlobalStep, ManifestSHA256: manifestDigest, CommittedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	marker := checkpointapi.CommitMarker{CheckpointVersion: checkpointapi.Version, GlobalStep: manifest.GlobalStep, ManifestSHA256: manifestDigest, CommittedAt: time.Now().UTC().Format(time.RFC3339Nano), SlurmJobID: jobID}
 	markerBytes, _ := json.Marshal(marker)
 	markerKey := fmt.Sprintf("checkpoints/%s/step_%08d.complete", manifest.RunID, manifest.GlobalStep)
 	if err := s.putImmutableMarker(ctx, markerKey, markerBytes, marker); err != nil {
@@ -285,6 +286,9 @@ func (s objectStore) putImmutable(ctx context.Context, key string, data []byte, 
 		return err
 	}
 	options := minio.PutObjectOptions{ContentType: contentType}
+	if s.clusterUID != "" {
+		options.UserMetadata = map[string]string{"cluster-uid": s.clusterUID}
+	}
 	options.SetMatchETagExcept("*")
 	_, err := s.client.PutObject(ctx, s.bucket, key, bytes.NewReader(data), int64(len(data)), options)
 	if preconditionFailed(err) {

@@ -6,7 +6,8 @@ GO_MODULES := \
 	src/quantization-engine \
 	src/slurm-operator \
 	src/dra-driver \
-	src/slurm-compute-node
+	src/slurm-compute-node \
+	src/watchdog-daemon
 BIN_DIR := $(CURDIR)/bin
 GO_FILES := $(shell find src -type f -name '*.go' -print)
 PYTHON_FILES := $(shell find src -type f -name '*.py' -print)
@@ -15,7 +16,8 @@ SHELL_FILES := $(shell find test -type f -name '*.sh' -print 2>/dev/null)
 
 .PHONY: all build test generate manifests verify fmt fmt-check vet versions \
 	verify-versions manifests-check generated-check python-check python-test ring-lib json-check shell-check \
-	phase1-e2e phase2-e2e phase2-gpu-e2e phase3-e2e
+	phase1-e2e phase2-e2e phase2-gpu-e2e phase3-e2e phase4-e2e \
+	phase5-e2e examples-check release-manifests
 
 all: build
 
@@ -26,6 +28,7 @@ build: python-check ring-lib
 	@cd src/slurm-compute-node && GOWORK=off go build -o "$(BIN_DIR)" ./cmd/...
 	@cd src/checkpoint-flusher && GOWORK=off go build -o "$(BIN_DIR)/checkpoint-flusher" .
 	@cd src/quantization-engine && GOWORK=off go build -o "$(BIN_DIR)/quantization-engine" .
+	@cd src/watchdog-daemon && GOWORK=off go build -o "$(BIN_DIR)/watchdog-daemon" .
 
 test: python-check python-test
 	@staged="$$(mktemp -d)"; trap 'rm -rf "$$staged"' EXIT; \
@@ -62,6 +65,18 @@ phase2-gpu-e2e:
 
 phase3-e2e:
 	./test/phase3/e2e.sh
+
+phase4-e2e:
+	./test/phase4/e2e.sh
+
+phase5-e2e:
+	./test/phase5/e2e.sh
+
+examples-check:
+	./test/phase5/examples.py
+
+release-manifests:
+	./test/phase5/release-manifests.sh
 
 ring-lib:
 	@mkdir -p "$(BIN_DIR)"
@@ -120,8 +135,8 @@ verify-versions:
 	done
 
 versions:
-	@printf 'Go %s\nKubernetes %s\nSlurm %s\nOpenTPU %s\nNVIDIA toolkit %s\nPyRTL %s\nNumPy %s\n' \
-		'$(GO_VERSION)' '$(KUBERNETES_VERSION)' '$(SLURM_VERSION)' '$(OPENTPU_REVISION)' \
+	@printf 'Go %s\nKubernetes %s\nSlurm %s\nNode Problem Detector %s\nOpenTPU %s\nNVIDIA toolkit %s\nPyRTL %s\nNumPy %s\n' \
+		'$(GO_VERSION)' '$(KUBERNETES_VERSION)' '$(SLURM_VERSION)' '$(NODE_PROBLEM_DETECTOR_VERSION)' '$(OPENTPU_REVISION)' \
 		'$(NVIDIA_TOOLKIT_VERSION)' '$(PYRTL_VERSION)' '$(NUMPY_VERSION)'
 
-verify: verify-versions generated-check fmt-check build test vet manifests-check json-check shell-check
+verify: verify-versions generated-check fmt-check build test vet manifests-check examples-check json-check shell-check

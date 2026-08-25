@@ -14,12 +14,13 @@ Makefile recipes or project scripts.
 
 ## Current snapshot
 
-- Phases 0 through 3 are complete. Phase 4 fault recovery is next.
+- Phases 0 through 5 are complete, including the live physical-resource,
+  fault-injection, rollback, and release exit gates.
 - Delivery status and task IDs are authoritative in `docs/progress.md`.
-- Pins: Go 1.26.7, Kubernetes 1.35.6, Slurm 25.11.7, OpenTPU
+- Pins: Go 1.26.7, Kubernetes 1.35.6, Slurm 26.05.3, OpenTPU
   `ca5d381c93752a504e8de1fa10c9d51649853c70`.
 - Module prefix: `github.com/varrahan/hetero-cluster-orchestrater/src`.
-- Three Go modules are joined by `go.work` but must build independently.
+- Seven Go modules are joined by `go.work` but must build independently.
 - Preserve unrelated work; the repository may already be dirty.
 
 ## System contract
@@ -48,11 +49,12 @@ external MariaDB/MinIO, and OpenTPU simulation.
 - `src/dra-driver`: one driver/image with NVIDIA, CPU, NUMA-memory, and OpenTPU
   providers.
 - `src/slurm-compute-node`: `gres-init` plus the worker image.
+- `src/watchdog-daemon`: fixed node health probes and guarded host reboot.
 - `src/python-workloads`: the reference PyRTL adapter, not Go internals.
 - `src/manifests`: generated CRDs/RBAC and Kustomize deployment resources.
 
-Add `shared`, `quantization-engine`, `watchdog-daemon`, `checkpoint-flusher`,
-and PyTorch adapter code only when their implementation phase uses them.
+Add new shared services or adapter code only when their implementation phase
+uses them.
 
 Deployable modules may import `shared`; they do not import one another. Use
 Kubernetes/Slurm APIs, Unix sockets, or versioned files across processes.
@@ -121,6 +123,7 @@ Use the narrowest targeted test while iterating, then `make verify` once.
 - DRA, NUMA, claims, GRES translation: `docs/scheduling-and-resources.md`.
 - Manifest v2, MinIO commit/restore, IPC: `docs/checkpointing.md`.
 - Conditions, taints, drain/requeue/reboot: `docs/failure-recovery.md`.
+- Outages, backup/restore, monitoring, release, and rollback: `docs/operations.md`.
 - Phase scope and acceptance tests: `docs/implementation-plan.md`.
 
 For implementation work, read only the active phase section in

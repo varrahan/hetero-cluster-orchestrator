@@ -30,7 +30,7 @@ func main() {
 	if err := os.Chmod(socket, 0660); err != nil {
 		log.Fatal(err)
 	}
-	httpServer := &http.Server{Handler: &server{store: objectStore{client: config.client, bucket: config.bucket}, sharedRoot: "/dev/shm/ai-orch", clusterUID: config.clusterUID, budget: config.budget, transactions: map[string]*transaction{}, active: map[string]string{}, runOwners: map[string]uint64{}}, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+	httpServer := &http.Server{Handler: &server{store: objectStore{client: config.client, bucket: config.bucket, clusterUID: config.clusterUID}, sharedRoot: "/dev/shm/ai-orch", clusterUID: config.clusterUID, budget: config.budget, transactions: map[string]*transaction{}, active: map[string]string{}, runOwners: map[string]uint64{}}, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Fatal(fmt.Errorf("serve checkpoint socket: %w", err))
 	}
