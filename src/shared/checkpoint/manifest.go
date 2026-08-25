@@ -127,6 +127,7 @@ type CommitMarker struct {
 	GlobalStep        uint64 `json:"global_step"`
 	ManifestSHA256    string `json:"manifest_sha256"`
 	CommittedAt       string `json:"committed_at"`
+	SlurmJobID        uint64 `json:"slurm_job_id,omitempty"`
 }
 
 type Compatibility struct {
@@ -416,22 +417,9 @@ func (m *Manifest) Compatible(want Compatibility) error {
 }
 
 func (m *Manifest) Object(id string) (Object, error) {
-	for _, tensor := range m.Tensors {
-		for _, chunk := range tensor.Chunks {
-			if chunk.ChunkID == id {
-				return Object{ID: id, Path: chunk.StoragePath, Offset: chunk.ByteOffset, Length: chunk.ByteLength, SHA256: chunk.SHA256, WriterRank: chunk.WriterRank}, nil
-			}
-		}
-	}
-	if id == "optimizer_metadata" {
-		a := m.State.OptimizerMetadata
-		return Object{ID: id, Path: a.StoragePath, Length: a.ByteLength, SHA256: a.SHA256, WriterRank: 0}, nil
-	}
-	if strings.HasPrefix(id, "rng_") {
-		rank, err := strconv.Atoi(strings.TrimPrefix(id, "rng_"))
-		artifact, ok := m.State.RNG[strconv.Itoa(rank)]
-		if err == nil && ok {
-			return Object{ID: id, Path: artifact.StoragePath, Length: artifact.ByteLength, SHA256: artifact.SHA256, WriterRank: rank}, nil
+	for _, object := range m.Objects() {
+		if object.ID == id {
+			return object, nil
 		}
 	}
 	return Object{}, fmt.Errorf("object %q is not authorized by the manifest", id)
