@@ -17,14 +17,14 @@ framework-native. Node Problem Detector publishes the raw health condition;
 this project adds probe configuration and the narrowly scoped
 `watchdog-daemon`.
 
-The root `go.work` ties together the three active Go modules in the
+The root `go.work` ties together the active Go modules in the
 [repository layout](repository-layout.md), and the root `Makefile` delegates
 build, test, generation, manifest rendering, and verification without hiding
 module-specific commands. Add packages only when their phase needs them.
 
 ## Phase 0: Foundation
 
-The completed foundation pins Go 1.26.7, Kubernetes 1.35.6, Slurm 25.11.7,
+The completed foundation pins Go 1.26.7, Kubernetes 1.35.6, Slurm 26.05.3,
 and OpenTPU revision `ca5d381c93752a504e8de1fa10c9d51649853c70` in
 `versions.mk`. All Go modules use the permanent
 `github.com/varrahan/hetero-cluster-orchestrater/src` prefix and build and test
@@ -131,8 +131,8 @@ Slurm state, claims, checkpoints, and quarantines.
   `envtest` and fake Slurm/MinIO endpoints.
 - Run mock DRA providers in a multi-node test cluster for claim exclusivity,
   scheduling, `gres-init` failure, scale-up, and scale-down.
-- Prove a quarantined node admits only NPD, `watchdog-daemon`, and verifier
-  Pods.
+- Prove a quarantined node admits only the required DRA/NPD/watchdog node
+  services and verifier Pods, never elastic workers or ordinary workloads.
 - Prove loss of Slurm REST disables reboot and destructive cleanup.
 
 ### Physical acceptance matrix

@@ -37,6 +37,14 @@ logical CPU, core, and socket IDs. Memory devices publish their unit size.
 OpenTPU simulation slots publish profile, matrix size, CPU count, memory, and
 shared-memory footprints.
 
+After publishing ResourceSlices, the node plugin records the deterministic v1
+inventory on its Node as `orchestration.gputpu.io/inventory-v1`, its current
+Kubernetes boot ID as `orchestration.gputpu.io/inventory-boot-id`, and a SHA-256
+hardware identity as `orchestration.gputpu.io/inventory-hash`. The JSON includes
+the boot ID, but the identity hash covers only sorted NUMA cells and devices so
+unchanged hardware compares equal across a reboot. A different inventory within
+one boot is rejected rather than silently republished.
+
 On WSL 2, NVIDIA allocation uses `/dev/dxg` and CDI bind-mounts the host driver
 files individually. Native Linux continues to use the NVIDIA CDI generator.
 
@@ -126,10 +134,12 @@ The `gres-init` init container then:
 7. exits successfully only when the DRA and Slurm views agree.
 
 After `gres-init` succeeds, MUNGE starts and the main container registers with a
-unique Pod-derived hostname and explicit Pod IP:
+unique Pod-derived hostname and explicit Pod IP. CPU-only nodes use Slurm weight
+1 and accelerator nodes use weight 2, so unconstrained heterogeneous components
+do not consume the scarce node needed by a GRES component:
 
 ```text
-slurmd -Z --conf "CPUs=8 Sockets=1 CoresPerSocket=8 ThreadsPerCore=1 RealMemory=15360 Gres=gpu:rtx_4050:1 Feature=pool_strict"
+slurmd -Z --conf "CPUs=8 Sockets=1 CoresPerSocket=8 ThreadsPerCore=1 RealMemory=15360 Gres=gpu:rtx_4050:1 Feature=pool_strict Weight=2"
 ```
 
 Presenting the claimed NUMA cell as one Slurm socket keeps GRES affinity within

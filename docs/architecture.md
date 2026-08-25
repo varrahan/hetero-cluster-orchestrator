@@ -128,10 +128,12 @@ One `dra-driver` module and node-plugin image owns four provider implementations
 | NUMA memory | Fixed-size memory units | Apply the selected NUMA memory policy with CDI/NRI |
 | OpenTPU simulation | Configured virtual simulator slots | Inject the selected PyRTL profile and shared-memory layout |
 
-Node Problem Detector publishes raw hardware fault conditions. The separate
-privileged `watchdog-daemon` executes fixed inventory, reboot, and verification
-operations for its own node. It cannot select another node, alter Slurm jobs,
-or execute arbitrary annotation content.
+The DRA plugin publishes a deterministic boot-scoped inventory and a
+boot-independent hardware identity hash. Node Problem Detector publishes raw
+hardware fault conditions from the separate privileged `watchdog-daemon`, which
+validates that inventory, runs bounded checks, and accepts only the fixed reboot
+request for its own node. It cannot select another node, alter Slurm jobs, or
+execute arbitrary annotation content.
 
 The node-wide `quantization-engine` DaemonSet converts canonical floating-point
 buffers to and from OpenTPU INT8 buffers. It shares only namespaced, bounded
@@ -171,7 +173,7 @@ metadata:
 spec:
   controlPlane:
     controllers:
-      image: registry.example/slurm:25.11.7
+      image: registry.example/slurm:26.05.3
       stateSaveClaim: slurm-state-rwx
     accounting:
       databaseSecretRef: slurm-mariadb
@@ -184,7 +186,7 @@ spec:
     - name: strict
       partition: compute
       nodeSelector:
-        orchestration.gputpu.io/compute-node: "true"
+        orchestration.gputpu.io/compute: "true"
       memoryUnit: 1Gi
       scaling:
         minReady: 0
@@ -193,10 +195,10 @@ spec:
       profiles:
         - name: rtx-4050
           gres: gpu:rtx_4050
-          deviceClassName: nvidia.gputpu.io
+          deviceClassName: nvidia.orchestration.gputpu.io
         - name: opentpu-m8
           gres: tpu:opentpu_m8
-          deviceClassName: opentpu-sim.gputpu.io
+          deviceClassName: opentpu.orchestration.gputpu.io
 ```
 
 Native CRD admission validation rejects static inconsistencies such as
@@ -222,7 +224,7 @@ The following names are stable interfaces:
 - quarantine taint:
   `orchestration.gputpu.io/hardware-degraded=true:NoSchedule`;
 - compute-node taint:
-  `orchestration.gputpu.io/dedicated=compute:NoSchedule`;
+  `orchestration.gputpu.io/compute=true:NoSchedule`;
 - reboot request annotation:
   `orchestration.gputpu.io/reboot-request=<incident-uuid>`; and
 - recovery phase annotation:
@@ -251,9 +253,9 @@ most once. The operator confirms a reboot by observing a changed
 
 ## Observability
 
-The operator emits Kubernetes Events for state transitions and metrics for
-reconcile errors, pending-demand age, claim allocation latency, worker startup,
-GRES mismatches, idle capacity, checkpoint freshness, recovery duration, reboot
-attempts, and verifier results. Alerts cover controller failover, unavailable
-Slurm REST/accounting, stale checkpoints, workers stuck before registration,
-and nodes left in a recovery phase beyond its timeout.
+The operator emits attributable Kubernetes Events plus metrics for cluster
+conditions, pending-demand age, worker states, checkpoint freshness, and
+recovery phase/duration. Kubernetes controller and Pod metrics cover reconcile,
+allocation, startup, and GRES-init failures. The shipped dashboard and alerts
+cover control-plane/accounting outages, stuck demand or workers, GRES mismatch,
+stale checkpoints, and prolonged recovery.

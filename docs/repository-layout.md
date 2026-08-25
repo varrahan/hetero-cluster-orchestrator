@@ -26,9 +26,16 @@ heterogeneous-ai-orchestrator/
     ├── slurm-compute-node/
     │   ├── go.mod
     │   ├── cmd/
-    │   │   └── gres-init/
-    │   ├── internal/
+    │   │   ├── gres-init/
+    │   │   └── hardware-verifier/
     │   └── Dockerfile
+    ├── watchdog-daemon/
+    │   ├── go.mod
+    │   ├── main.go
+    │   └── Dockerfile
+    ├── shared/
+    ├── checkpoint-flusher/
+    ├── quantization-engine/
     ├── python-workloads/
     │   └── opentpu-harness/
     │       └── runtime.py
@@ -104,10 +111,12 @@ privilege requirements make a split necessary.
 
 Module: `github.com/varrahan/hetero-cluster-orchestrater/src/slurm-compute-node`
 
-The image contains `slurmd`, MUNGE, and one focused binary:
+The image contains `slurmd`, MUNGE, and two focused binaries:
 
 - `gres-init` validates DRA allocations and writes `gres.conf` plus the dynamic
   node configuration.
+- `hardware-verifier` runs bounded CPU, memory, CUDA, and OpenTPU checks on an
+  exactly claimed NUMA cell during recovery.
 
 ### `src/python-workloads`
 
@@ -128,6 +137,12 @@ contracts. `src/checkpoint-flusher` owns MinIO, hashing, commit, restore, and
 worker-local staging. `src/quantization-engine` owns bounded OpenTPU numeric
 conversion and has no storage credentials.
 
+### `src/watchdog-daemon`
+
+This node service validates DRA boot inventory, exposes the fixed NPD probe,
+and acknowledges one guarded host reboot request for its own Node. It does not
+own Slurm or recovery policy.
+
 ### `src/manifests`
 
 `crds/` and generated RBAC are outputs of `make generate`. `workloads/` contains
@@ -142,6 +157,10 @@ flowchart LR
     OP[slurm-operator]
     DRA[dra-driver]
     SC[slurm-compute-node]
+    WD[watchdog-daemon]
+    SH[shared]
+    OP --> SH
+    SC --> SH
     PY[python-workloads] -. invokes .-> SC
     MF[manifests] -. deploys .-> OP
     MF -. deploys .-> DRA

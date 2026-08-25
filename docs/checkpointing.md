@@ -172,10 +172,13 @@ sequenceDiagram
 ```
 
 The sibling `.complete` object is JSON containing `checkpoint_version`,
-`global_step`, `manifest_sha256`, and `committed_at`. It is written last with
-`If-None-Match: *`. A repeated commit with the same hash is idempotent; a
-different hash for the same step is a conflict. MinIO supports conditional PUT
-operations with `If-None-Match`; see its
+`global_step`, `manifest_sha256`, `committed_at`, and the authenticated
+`slurm_job_id`. The job ID lets recovery correlate a post-signal commit to the
+affected Slurm job; older markers without it remain readable but cannot satisfy
+that recovery barrier. The marker is written last with `If-None-Match: *`. A
+repeated commit with the same hash is idempotent; a different hash for the same
+step is a conflict. MinIO supports conditional PUT operations with
+`If-None-Match`; see its
 [S3 API compatibility](https://docs.min.io/aistor/developers/s3-api-compatibility/).
 
 HTTP success from an upload alone is not a commit. At the coordinator's commit

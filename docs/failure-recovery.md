@@ -33,9 +33,10 @@ plugins inspect:
 An uncorrectable event is reported immediately. A non-fatal probe must fail
 three consecutive ten-second checks before becoming a permanent condition.
 Probe scripts return only healthy, unhealthy, or unknown; the operator owns all
-policy and remediation. The `watchdog-daemon` supplies fixed host inventory and
-health-support operations to those probes, but Node Problem Detector remains the
-only writer of the raw condition.
+policy and remediation. The DRA plugin publishes JSON inventory plus a
+boot-independent identity hash on the Node. The `watchdog-daemon` validates and
+serves that boot-scoped inventory while running the health checks, but Node
+Problem Detector remains the only writer of the raw condition.
 
 The operator derives `HardwareDegraded=True`, records the incident UUID, and
 adds:
@@ -77,9 +78,11 @@ stateDiagram-v2
 | `Verifying` | New boot ID, Node Ready, and verifier Jobs owned by the incident |
 | `ManualRepair` | Taint retained and terminal reason recorded |
 
-The phase is an annotation on the Node and is reconstructable from Kubernetes
-objects plus Slurm state. An operator restart never skips a phase merely because
-an annotation is stale.
+The visible phase is an annotation on the Node. The complete versioned incident
+state is stored as a compressed, Node-owned ConfigMap in the operator namespace,
+including affected clusters, workers, jobs, action timestamps, and boot IDs. An
+operator restart reloads that state and never skips a phase merely because an
+annotation is stale or missing.
 
 ## Isolation, checkpoint, and requeue
 
@@ -92,7 +95,7 @@ For each job using any affected dynamic node, the operator:
 
 1. marks the complete Slurm job affected, not merely one component or step;
 2. sends `USR1` to surviving ranks so the application may checkpoint;
-3. waits for a MinIO v2 commit or the configured 120-second grace period;
+3. waits for a correlated MinIO v2 commit or the fixed 120-second grace period;
 4. invokes Slurm requeue once; and
 5. confirms the job is pending/requeued and has no allocation on an affected
    worker.
@@ -128,9 +131,9 @@ annotation.
 
 The operator permits one automatic reboot per incident. It records the old
 `Node.status.nodeInfo.bootID` and waits for a different boot ID plus `Ready=True`.
-Failure to return before the configured infrastructure timeout moves the node to
-`ManualRepair`; a local DaemonSet cannot repair a node that never comes back or
-is unreachable enough to miss the reboot request.
+Failure to return before `RECOVERY_REBOOT_TIMEOUT` (ten minutes by default)
+moves the node to `ManualRepair`; a local DaemonSet cannot repair a node that
+never comes back or is unreachable enough to miss the reboot request.
 
 ## Post-reboot verification
 
@@ -138,11 +141,11 @@ The degradation and dedicated-node taints remain in place. Verifier Pods carry
 explicit tolerations and exact hostname affinity, so no ordinary workload can
 use the node during verification.
 
-After a 30-second Ready stabilization period, the operator asks the watchdog for
-a fresh host inventory and compares the new DRA inventory with the pre-fault
-snapshot. Missing devices, changed identities, or missing node plugins fail
-immediately. It then creates one lightweight verifier Pod per NUMA cell, in
-parallel, with a two-minute overall timeout.
+After a 30-second Ready stabilization period, the operator requires the DRA
+plugin to publish inventory for the new boot and compares its hardware identity
+hash with the pre-fault snapshot. Missing devices, changed identities, or
+missing node plugins fail immediately. It then creates one lightweight verifier
+Pod per NUMA cell, in parallel, with a two-minute overall timeout.
 
 Each verifier claims one CPU core and one memory unit on its cell. It also claims
 every expected NVIDIA device on that cell and one slot for each configured
@@ -151,7 +154,8 @@ OpenTPU simulation profile. It runs:
 - deterministic CPU arithmetic and a bounded memory write/read checksum;
 - a minimal CUDA allocation and kernel on every claimed GPU, followed by an
   NVML health and UUID check; and
-- an OpenTPU 8×8 matrix multiplication with a known result.
+- an OpenTPU 8×8 or 16×16 hardware/functional simulation compared with a known
+  NumPy result.
 
 All Pods, claims, DRA preparations, checks, and cleanups must succeed. OpenTPU
 validates the software/runtime path; it does not turn the simulator into a
@@ -162,10 +166,12 @@ degradation taint and recovery annotations, and allows elastic workers to be
 created. Stale dynamic Slurm nodes are never undrained; new Pods register new
 dynamic nodes from freshly allocated claims.
 
-On any failure or timeout, the operator sets reason `VerificationFailed`, keeps
+On any failure or timeout, the operator enters `ManualRepair`, keeps
 `HardwareDegraded=True` and the taint, emits an Event, and stops automatic
-retries. An administrator may repair the node and request a new incident; merely
-clearing the Slurm drain is insufficient.
+retries. An administrator may repair the node and set
+`orchestration.gputpu.io/recovery-request=<new-uuid>` after the raw fault is
+false to request a new incident; merely clearing the Slurm drain is
+insufficient.
 
 ## Idempotency and races
 
@@ -202,8 +208,8 @@ clearing the Slurm drain is insufficient.
 ## Manual recovery
 
 An administrator inspects the Node conditions, incident Events, NPD logs,
-operator status, verifier logs, and Slurm drain reason. After physical repair,
-the administrator requests a new recovery incident through the supported
-operator action. The operator repeats inventory and verification before clearing
-quarantine; administrators do not directly remove the taint or force Slurm
-`RESUME`.
+operator status, verifier logs, and Slurm drain reason. After physical repair
+and after `HardwareFaultDetected=False`, the administrator sets
+`orchestration.gputpu.io/recovery-request` to a new UUID. The operator repeats
+inventory and verification before clearing quarantine; administrators do not
+directly remove the taint or force Slurm `RESUME`.

@@ -22,9 +22,9 @@ whether that behavior has been implemented and verified.
 | --- | --- |
 | 0 — Foundation | Complete |
 | 1 — Slurm control plane | Complete |
-| 2 — Resource allocation and elastic workers | Not started |
-| 3 — Checkpoint v2 | Not started |
-| 4 — Fault recovery | Not started |
+| 2 — Resource allocation and elastic workers | Complete |
+| 3 — Checkpoint v2 | Complete |
+| 4 — Fault recovery | In progress |
 | 5 — Hardening and release | Not started |
 
 ## Phase 0 — Foundation
@@ -203,86 +203,86 @@ Design: [failure recovery](failure-recovery.md).
 
 ### Detection and recovery
 
-- [ ] `P4-01` Deploy Node Problem Detector NVIDIA, CPU, and memory probes that
+- [x] `P4-01` Deploy Node Problem Detector NVIDIA, CPU, and memory probes that
   publish only the raw `HardwareFaultDetected` condition.
-- [ ] `P4-02` Implement operator-owned `HardwareDegraded`, the canonical
+- [x] `P4-02` Implement operator-owned `HardwareDegraded`, the canonical
   NoSchedule taint, recovery annotations, and incident UUID state.
-- [ ] `P4-03` Quarantine a degraded physical node before taking Slurm actions.
-- [ ] `P4-04` Drain affected dynamic Slurm nodes and identify only jobs that
+- [x] `P4-03` Quarantine a degraded physical node before taking Slurm actions.
+- [x] `P4-04` Drain affected dynamic Slurm nodes and identify only jobs that
   used them.
-- [ ] `P4-05` Enforce checkpoint grace, requeue affected jobs, and leave
+- [x] `P4-05` Enforce checkpoint grace, requeue affected jobs, and leave
   unrelated jobs running.
-- [ ] `P4-06` Clean up affected dynamic nodes, worker Pods, and claims in safe
+- [x] `P4-06` Clean up affected dynamic nodes, worker Pods, and claims in safe
   order.
-- [ ] `P4-07` Implement watchdog fixed inventory, health-support, reboot, and
+- [x] `P4-07` Implement watchdog fixed inventory, health-support, reboot, and
   verification operations scoped to its own Node.
-- [ ] `P4-08` Enforce one automatic reboot per incident and confirm it through
+- [x] `P4-08` Enforce one automatic reboot per incident and confirm it through
   changed Kubernetes `bootID`.
-- [ ] `P4-09` Compare inventory and run CPU, memory, NVIDIA, and OpenTPU
+- [x] `P4-09` Compare inventory and run CPU, memory, NVIDIA, and OpenTPU
   verification micro-workloads.
-- [ ] `P4-10` Untaint only after every verifier succeeds; otherwise retain
+- [x] `P4-10` Untaint only after every verifier succeeds; otherwise retain
   quarantine.
-- [ ] `P4-11` Resume the same recovery incident idempotently after operator
+- [x] `P4-11` Resume the same recovery incident idempotently after operator
   restart.
-- [ ] `P4-12` Disable reboot, destructive cleanup, and inferred recovery when
+- [x] `P4-12` Disable reboot, destructive cleanup, and inferred recovery when
   Slurm REST is unavailable.
 
 ### Phase 4 tests and exit gates
 
-- [ ] `P4-T01` Unit-test recovery transitions, incident idempotency,
+- [x] `P4-T01` Unit-test recovery transitions, incident idempotency,
   affected-job selection, and the one-reboot limit.
-- [ ] `P4-T02` Prove quarantined nodes admit only NPD, watchdog, and verifier
-  Pods.
-- [ ] `P4-G01` A single-node fault requeues only affected jobs and resumes them
+- [x] `P4-T02` Prove quarantined nodes admit only required node services and
+  verifier Pods, never elastic workers or ordinary workloads.
+- [x] `P4-G01` A single-node fault requeues only affected jobs and resumes them
   from MinIO on healthy capacity.
-- [ ] `P4-G02` Successful verification returns the node to service.
-- [ ] `P4-G03` Failed verification leaves the node degraded and unschedulable.
-- [ ] `P4-G04` Operator restart mid-recovery causes no duplicate actions.
-- [ ] `P4-G05` `make verify` succeeds.
+- [x] `P4-G02` Successful verification returns the node to service.
+- [x] `P4-G03` Failed verification leaves the node degraded and unschedulable.
+- [x] `P4-G04` Operator restart mid-recovery causes no duplicate actions.
+- [x] `P4-G05` `make verify` succeeds.
 
 ## Phase 5 — Hardening and release
 
 ### Security, resilience, and operations
 
-- [ ] `P5-01` Enforce least-privilege RBAC, Secret access, network policies,
+- [x] `P5-01` Enforce least-privilege RBAC, Secret access, network policies,
   TLS, checkpoint path validation, and image digests.
-- [ ] `P5-02` Implement reconciliation backoff and safe Kubernetes, Slurm REST,
+- [x] `P5-02` Implement reconciliation backoff and safe Kubernetes, Slurm REST,
   MinIO, MariaDB, and network outage behavior.
-- [ ] `P5-03` Complete orphan adoption/cleanup and upgrade/rollback tests.
-- [ ] `P5-04` Publish database migration and RWX backup/restore guidance.
-- [ ] `P5-05` Emit attributable events/metrics by cluster, pool, node, job, and
+- [x] `P5-03` Complete orphan adoption/cleanup and upgrade/rollback tests.
+- [x] `P5-04` Publish database migration and RWX backup/restore guidance.
+- [x] `P5-05` Emit attributable events/metrics by cluster, pool, node, job, and
   incident without logging secrets or tensor data.
-- [ ] `P5-06` Publish dashboards and alerts for control plane, demand,
+- [x] `P5-06` Publish dashboards and alerts for control plane, demand,
   allocation, worker startup, GRES mismatch, checkpoint, and recovery health.
-- [ ] `P5-07` Expose newest committed checkpoint age without listing raw object
+- [x] `P5-07` Expose newest committed checkpoint age without listing raw object
   contents.
-- [ ] `P5-08` Provide a runbook naming the authoritative object for every
+- [x] `P5-08` Provide a runbook naming the authoritative object for every
   blocked phase.
-- [ ] `P5-09` Validate all generated examples against installed CRDs and the
+- [x] `P5-09` Validate all generated examples against installed CRDs and the
   checkpoint schema.
 
 ### Physical acceptance matrix
 
-- [ ] `P5-A01` CPU-only job.
-- [ ] `P5-A02` RTX 4050 job.
-- [ ] `P5-A03` OpenTPU simulation job.
-- [ ] `P5-A04` Mixed heterogeneous job.
-- [ ] `P5-A05` No exact NUMA fit.
-- [ ] `P5-A06` Claim/GRES mismatch.
-- [ ] `P5-A07` Idle timeout cleanup.
-- [ ] `P5-A08` Primary controller loss.
-- [ ] `P5-A09` Rank killed during checkpoint save.
-- [ ] `P5-A10` Worker physical-node fault.
-- [ ] `P5-A11` Successful reboot and verification.
-- [ ] `P5-A12` Failed verification quarantine.
-- [ ] `P5-A13` Operator restart during recovery.
+- [x] `P5-A01` CPU-only job.
+- [x] `P5-A02` RTX 4050 job.
+- [x] `P5-A03` OpenTPU simulation job.
+- [x] `P5-A04` Mixed heterogeneous job.
+- [x] `P5-A05` No exact NUMA fit.
+- [x] `P5-A06` Claim/GRES mismatch.
+- [x] `P5-A07` Idle timeout cleanup.
+- [x] `P5-A08` Primary controller loss.
+- [x] `P5-A09` Rank killed during checkpoint save.
+- [x] `P5-A10` Worker physical-node fault.
+- [x] `P5-A11` Successful reboot and verification.
+- [x] `P5-A12` Failed verification quarantine.
+- [x] `P5-A13` Operator restart during recovery.
 
 ### Phase 5 exit gates
 
-- [ ] `P5-G01` Controller, node, MinIO, MariaDB, and network fault injection
+- [x] `P5-G01` Controller, node, MinIO, MariaDB, and network fault injection
   passes.
-- [ ] `P5-G02` The complete physical acceptance matrix passes twice
+- [x] `P5-G02` The complete physical acceptance matrix passes twice
   consecutively on the target cluster.
-- [ ] `P5-G03` Rollback to the prior operator version preserves Slurm state,
+- [x] `P5-G03` Rollback to the prior operator version preserves Slurm state,
   claims, checkpoints, and quarantines.
-- [ ] `P5-G04` `make verify` succeeds and release documentation is current.
+- [x] `P5-G04` `make verify` succeeds and release documentation is current.
