@@ -8,6 +8,7 @@ const (
 	ConditionControlPlaneReady = "ControlPlaneReady"
 	ConditionAccountingReady   = "AccountingReady"
 	ConditionWorkersReady      = "WorkersReady"
+	ConditionCheckpointReady   = "CheckpointStoreReady"
 )
 
 // HeterogeneousClusterSpec is the desired configuration for one Slurm cluster.
@@ -118,7 +119,9 @@ type WorkerProfile struct {
 }
 
 type HeterogeneousClusterStatus struct {
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	ObservedGeneration        int64        `json:"observedGeneration,omitempty"`
+	CheckpointObservedAt      *metav1.Time `json:"checkpointObservedAt,omitempty"`
+	NewestCommittedCheckpoint *metav1.Time `json:"newestCommittedCheckpoint,omitempty"`
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

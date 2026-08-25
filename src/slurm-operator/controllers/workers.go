@@ -99,6 +99,9 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 			return workerResult{}, err
 		}
 		podNames[pod.Name] = true
+		if pod.Annotations[workerRecoveryAnnotation] != "" {
+			continue
+		}
 		if !pod.DeletionTimestamp.IsZero() {
 			if err := r.cleanupWorker(ctx, pod, restClient, nodeByName[pod.Name]); err != nil {
 				return workerResult{}, err
@@ -173,7 +176,7 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 	for i := range podList.Items {
 		pod := &podList.Items[i]
 		pool := pod.Labels[workerPoolLabel]
-		if _, ok := pools[pool]; !ok || !pod.DeletionTimestamp.IsZero() || pod.Status.Phase == corev1.PodFailed {
+		if _, ok := pools[pool]; !ok || !pod.DeletionTimestamp.IsZero() || pod.Status.Phase == corev1.PodFailed || pod.Annotations[workerRecoveryAnnotation] != "" {
 			continue
 		}
 		counts[pool]++
@@ -254,7 +257,7 @@ func (r *ClusterReconciler) reconcileWorkers(ctx context.Context, cluster *orche
 	for i := range podList.Items {
 		pod := &podList.Items[i]
 		pool, ok := pools[pod.Labels[workerPoolLabel]]
-		if !ok || !pod.DeletionTimestamp.IsZero() || pod.Annotations[workerDrainAnnotation] == "true" {
+		if !ok || !pod.DeletionTimestamp.IsZero() || pod.Annotations[workerDrainAnnotation] == "true" || pod.Annotations[workerRecoveryAnnotation] != "" {
 			continue
 		}
 		if podReady(pod) {

@@ -73,6 +73,7 @@ func Slurm(cluster *orchestrationv1alpha1.HeterogeneousCluster) SlurmFiles {
 	line("TaskProlog", "/etc/slurm/task-prolog")
 	line("ProctrackType", "proctrack/cgroup")
 	line("SchedulerType", "sched/backfill")
+	line("SchedulerParameters", "bf_hetjob_immediate,bf_hetjob_prio=min")
 	line("SlurmctldParameters", "enable_configless,reconfig_on_restart")
 	line("AccountingStorageType", "accounting_storage/slurmdbd")
 	line("AccountingStorageHost", fmt.Sprintf("%s-slurmdbd.%s.svc", name, namespace))

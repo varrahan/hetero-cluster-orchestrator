@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,6 +79,7 @@ type job struct {
 	TRESRequested string      `json:"tres_req_str"`
 	RequiredNodes string      `json:"required_nodes"`
 	Features      string      `json:"features"`
+	Nodes         string      `json:"nodes"`
 }
 
 type jobState struct {
@@ -159,16 +162,13 @@ func NewClient(baseURL string, key []byte, httpClient *http.Client) (*Client, er
 }
 
 func (c *Client) PendingJobs(ctx context.Context) ([]PendingJob, error) {
-	var response jobsResponse
-	if err := c.request(ctx, http.MethodGet, "/slurm/v0.0.44/jobs/", nil, &response); err != nil {
-		return nil, err
-	}
-	if err := responseError(response.Errors); err != nil {
+	response, err := c.fetchJobs(ctx)
+	if err != nil {
 		return nil, err
 	}
 
-	pending := make([]PendingJob, 0, len(response.Jobs))
-	for _, job := range response.Jobs {
+	pending := make([]PendingJob, 0, len(response))
+	for _, job := range response {
 		states := job.State.Current
 		if len(states) == 0 {
 			states = job.JobState.Current
@@ -192,15 +192,171 @@ func (c *Client) PendingJobs(ctx context.Context) ([]PendingJob, error) {
 	return pending, nil
 }
 
+type Job struct {
+	ID       uint32
+	HetJobID uint32
+	State    []string
+	Reason   string
+	Nodes    []string
+}
+
+func (j Job) RootID() uint32 {
+	if j.HetJobID != 0 {
+		return j.HetJobID
+	}
+	return j.ID
+}
+
+func (j Job) Pending() bool {
+	return slices.Contains(j.State, "PENDING") || requeuedState(j.State, j.Reason)
+}
+
+func (j Job) Terminal() bool {
+	return slices.ContainsFunc(j.State, func(state string) bool {
+		return slices.Contains([]string{"BOOT_FAIL", "CANCELLED", "COMPLETED", "DEADLINE", "FAILED", "NODE_FAIL", "OUT_OF_MEMORY", "PREEMPTED", "REVOKED", "TIMEOUT"}, state)
+	}) && !j.Pending()
+}
+
+func (j Job) UsesAnyNode(names map[string]struct{}) bool {
+	return slices.ContainsFunc(j.Nodes, func(name string) bool {
+		_, exists := names[name]
+		return exists
+	})
+}
+
+func (c *Client) Jobs(ctx context.Context) ([]Job, error) {
+	jobs, err := c.fetchJobs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Job, 0, len(jobs))
+	for _, item := range jobs {
+		states := item.State.Current
+		if len(states) == 0 {
+			states = item.JobState.Current
+		}
+		nodes, err := expandHostlist(item.Nodes, 10000)
+		if err != nil {
+			return nil, fmt.Errorf("decode nodes for Slurm job %d: %w", item.ID, err)
+		}
+		result = append(result, Job{ID: item.ID, HetJobID: uint32(item.HetJobID.Value), State: slices.Clone(states), Reason: item.Reason, Nodes: nodes})
+	}
+	return result, nil
+}
+
+func expandHostlist(value string, limit int) ([]string, error) {
+	var result []string
+	groups, err := splitHostlist(value)
+	if err != nil {
+		return nil, err
+	}
+	for _, group := range groups {
+		expanded := []string{""}
+		for len(group) != 0 {
+			open := strings.IndexByte(group, '[')
+			if open < 0 {
+				for i := range expanded {
+					expanded[i] += group
+				}
+				break
+			}
+			close := strings.IndexByte(group[open:], ']')
+			if close < 0 {
+				return nil, fmt.Errorf("unclosed hostlist range %q", group)
+			}
+			close += open
+			prefix, options := group[:open], strings.Split(group[open+1:close], ",")
+			var values []string
+			for _, option := range options {
+				parts := strings.Split(option, "-")
+				if len(parts) == 1 && parts[0] != "" {
+					values = append(values, parts[0])
+					continue
+				}
+				if len(parts) != 2 {
+					return nil, fmt.Errorf("invalid hostlist range %q", option)
+				}
+				start, err1 := strconv.Atoi(parts[0])
+				end, err2 := strconv.Atoi(parts[1])
+				if err1 != nil || err2 != nil || start > end || end-start+1 > limit {
+					return nil, fmt.Errorf("invalid hostlist range %q", option)
+				}
+				width := max(len(parts[0]), len(parts[1]))
+				for number := start; number <= end; number++ {
+					values = append(values, fmt.Sprintf("%0*d", width, number))
+				}
+			}
+			var next []string
+			for _, base := range expanded {
+				for _, option := range values {
+					next = append(next, base+prefix+option)
+					if len(next)+len(result) > limit {
+						return nil, fmt.Errorf("hostlist exceeds %d nodes", limit)
+					}
+				}
+			}
+			expanded, group = next, group[close+1:]
+		}
+		result = append(result, expanded...)
+		if len(result) > limit {
+			return nil, fmt.Errorf("hostlist exceeds %d nodes", limit)
+		}
+	}
+	return result, nil
+}
+
+func splitHostlist(value string) ([]string, error) {
+	var result []string
+	start, depth := 0, 0
+	for index, character := range value {
+		switch character {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth < 0 {
+				return nil, fmt.Errorf("invalid hostlist %q", value)
+			}
+		case ',', ' ', '\t':
+			if depth == 0 {
+				if group := strings.TrimSpace(value[start:index]); group != "" {
+					result = append(result, group)
+				}
+				start = index + 1
+			}
+		}
+	}
+	if depth != 0 {
+		return nil, fmt.Errorf("invalid hostlist %q", value)
+	}
+	if group := strings.TrimSpace(value[start:]); group != "" {
+		result = append(result, group)
+	}
+	return result, nil
+}
+
+func (c *Client) fetchJobs(ctx context.Context) ([]job, error) {
+	var response jobsResponse
+	if err := c.request(ctx, http.MethodGet, "/slurm/v0.0.45/jobs/", nil, &response); err != nil {
+		return nil, err
+	}
+	if err := responseError(response.Errors); err != nil {
+		return nil, err
+	}
+	return response.Jobs, nil
+}
+
 func requeuedState(states []string, reason string) bool {
-	return slices.Contains(states, "REQUEUED") ||
-		slices.Contains(states, "CANCELLED") &&
-			(slices.Contains(states, "REQUEUE_HOLD") || slices.Contains(states, "SPECIAL_EXIT") || strings.EqualFold(reason, "job_requeued_in_held_state"))
+	if slices.Contains(states, "PENDING") {
+		return false
+	}
+	return slices.Contains(states, "REQUEUED") || slices.Contains(states, "REQUEUE_HOLD") || slices.Contains(states, "SPECIAL_EXIT") ||
+		slices.Contains(states, "CANCELLED") && strings.EqualFold(reason, "job_requeued_in_held_state")
 }
 
 func (c *Client) AccountingReady(ctx context.Context, clusterName string) error {
 	var response clustersResponse
-	if err := c.request(ctx, http.MethodGet, "/slurmdb/v0.0.44/clusters/", nil, &response); err != nil {
+	if err := c.request(ctx, http.MethodGet, "/slurmdb/v0.0.45/clusters/", nil, &response); err != nil {
 		return err
 	}
 	if err := responseError(response.Errors); err != nil {
@@ -237,7 +393,7 @@ type nodesResponse struct {
 
 func (c *Client) Nodes(ctx context.Context) ([]Node, error) {
 	var response nodesResponse
-	if err := c.request(ctx, http.MethodGet, "/slurm/v0.0.44/nodes/", nil, &response); err != nil {
+	if err := c.request(ctx, http.MethodGet, "/slurm/v0.0.45/nodes/", nil, &response); err != nil {
 		return nil, err
 	}
 	if err := responseError(response.Errors); err != nil {
@@ -255,14 +411,43 @@ func (c *Client) DrainNode(ctx context.Context, name, reason string) error {
 	var response struct {
 		Errors []apiError `json:"errors"`
 	}
-	if err := c.request(ctx, http.MethodPost, "/slurm/v0.0.44/node/"+url.PathEscape(name), body, &response); err != nil {
+	if err := c.request(ctx, http.MethodPost, "/slurm/v0.0.45/node/"+url.PathEscape(name), body, &response); err != nil {
 		return err
 	}
 	return responseError(response.Errors)
 }
 
 func (c *Client) DeleteNode(ctx context.Context, name string) error {
-	return c.request(ctx, http.MethodDelete, "/slurm/v0.0.44/node/"+url.PathEscape(name), nil, nil)
+	err := c.request(ctx, http.MethodDelete, "/slurm/v0.0.45/node/"+url.PathEscape(name), nil, nil)
+	var status *httpStatusError
+	if errors.As(err, &status) && status.Code == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
+
+func (c *Client) SignalJob(ctx context.Context, id uint32, signal string) error {
+	if signal != "USR1" {
+		return fmt.Errorf("unsupported Slurm signal %q", signal)
+	}
+	var response struct {
+		Errors []apiError `json:"errors"`
+	}
+	path := fmt.Sprintf("/slurm/v0.0.45/job/%d?signal=%s", id, url.QueryEscape(signal))
+	if err := c.request(ctx, http.MethodDelete, path, nil, &response); err != nil {
+		return err
+	}
+	return responseError(response.Errors)
+}
+
+func (c *Client) RequeueJob(ctx context.Context, id uint32) error {
+	var response struct {
+		Errors []apiError `json:"errors"`
+	}
+	if err := c.request(ctx, http.MethodGet, fmt.Sprintf("/slurm/v0.0.45/job/%d/requeue", id), nil, &response); err != nil {
+		return err
+	}
+	return responseError(response.Errors)
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body, output any) error {
@@ -270,7 +455,11 @@ func (c *Client) request(ctx context.Context, method, path string, body, output 
 	if err != nil {
 		return err
 	}
-	target := c.baseURL.ResolveReference(&url.URL{Path: path})
+	reference, err := url.Parse(path)
+	if err != nil || reference.IsAbs() || reference.Host != "" || !strings.HasPrefix(reference.Path, "/") {
+		return fmt.Errorf("invalid Slurm REST path")
+	}
+	target := c.baseURL.ResolveReference(reference)
 	var input io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -296,7 +485,7 @@ func (c *Client) request(ctx context.Context, method, path string, body, output 
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("Slurm REST returned HTTP %d", response.StatusCode)
+		return &httpStatusError{Code: response.StatusCode}
 	}
 	if output == nil || response.StatusCode == http.StatusNoContent {
 		return nil
@@ -314,6 +503,10 @@ func (c *Client) request(ctx context.Context, method, path string, body, output 
 	}
 	return nil
 }
+
+type httpStatusError struct{ Code int }
+
+func (e *httpStatusError) Error() string { return fmt.Sprintf("Slurm REST returned HTTP %d", e.Code) }
 
 func (c *Client) token() (string, error) {
 	now := time.Now().Unix()

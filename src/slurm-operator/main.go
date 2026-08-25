@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -65,7 +66,15 @@ func main() {
 	if err != nil {
 		exit(err)
 	}
-	if err := (&controllers.ClusterReconciler{Client: manager.GetClient(), Reader: manager.GetAPIReader(), Scheme: manager.GetScheme(), Recorder: manager.GetEventRecorderFor("slurm-operator"), WorkerImage: workerImage, WorkerMemoryHeadroom: headroom.Value()}).SetupWithManager(manager); err != nil {
+	clusterReconciler := &controllers.ClusterReconciler{Client: manager.GetClient(), Reader: manager.GetAPIReader(), Scheme: manager.GetScheme(), Recorder: manager.GetEventRecorderFor("slurm-operator"), WorkerImage: workerImage, WorkerMemoryHeadroom: headroom.Value()}
+	if err := clusterReconciler.SetupWithManager(manager); err != nil {
+		exit(err)
+	}
+	rebootTimeout, err := time.ParseDuration(cmp.Or(os.Getenv("RECOVERY_REBOOT_TIMEOUT"), "10m"))
+	if err != nil || rebootTimeout < time.Minute {
+		exit(fmt.Errorf("RECOVERY_REBOOT_TIMEOUT must be at least one minute"))
+	}
+	if err := (&controllers.RecoveryReconciler{ClusterReconciler: clusterReconciler, Namespace: namespace, RebootTimeout: rebootTimeout, BootIDAnnotation: os.Getenv("RECOVERY_BOOT_ID_ANNOTATION"), Recorder: manager.GetEventRecorderFor("hardware-recovery")}).SetupWithManager(manager); err != nil {
 		exit(err)
 	}
 	if err := manager.AddHealthzCheck("healthz", healthz.Ping); err != nil {

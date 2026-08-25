@@ -33,10 +33,12 @@ import (
 )
 
 const (
-	requeueInterval      = 5 * time.Second
-	controlPlaneReplicas = int32(2)
-	mungeKey             = "munge.key"
-	jwtKey               = "jwt_hs256.key"
+	requeueInterval        = 5 * time.Second
+	outageRequeue          = 30 * time.Second
+	checkpointScanInterval = time.Minute
+	controlPlaneReplicas   = int32(2)
+	mungeKey               = "munge.key"
+	jwtKey                 = "jwt_hs256.key"
 )
 
 // +kubebuilder:rbac:groups=orchestration.gputpu.io,resources=heterogeneousclusters,verbs=get;list;watch;update;patch
@@ -63,6 +65,9 @@ type ClusterReconciler struct {
 func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	var cluster orchestrationv1alpha1.HeterogeneousCluster
 	if err := r.Get(ctx, request.NamespacedName, &cluster); err != nil {
+		if apierrors.IsNotFound(err) {
+			forgetCluster(request.Namespace, request.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !cluster.DeletionTimestamp.IsZero() {
@@ -147,6 +152,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if err != nil {
 		return r.notReady(ctx, &cluster, "RESTUnavailable", err.Error(), nil)
 	}
+	observePendingJobs(&cluster, pendingJobs)
 	accountingError := restClient.AccountingReady(ctx, cluster.Name)
 	workers, err := r.reconcileWorkers(ctx, &cluster, restClient, pendingJobs)
 	if err != nil {
@@ -156,6 +162,24 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	status := cluster.Status.DeepCopy()
 	status.ObservedGeneration = cluster.Generation
 	status.WorkerPools = workers.Status
+	if cluster.Spec.Checkpointing == nil {
+		status.CheckpointObservedAt = nil
+		status.NewestCommittedCheckpoint = nil
+		meta.RemoveStatusCondition(&status.Conditions, orchestrationv1alpha1.ConditionCheckpointReady)
+	} else if status.CheckpointObservedAt == nil || time.Since(status.CheckpointObservedAt.Time) >= checkpointScanInterval {
+		observed := metav1.Now()
+		status.CheckpointObservedAt = &observed
+		newest, err := r.newestCommittedCheckpoint(ctx, &cluster)
+		if err == nil {
+			status.NewestCommittedCheckpoint = newest
+			setCondition(status, orchestrationv1alpha1.ConditionCheckpointReady, metav1.ConditionTrue, "Ready", "checkpoint commit metadata is readable", cluster.Generation)
+		} else {
+			setCondition(status, orchestrationv1alpha1.ConditionCheckpointReady, metav1.ConditionFalse, "ObjectStoreUnavailable", err.Error(), cluster.Generation)
+			if r.Recorder != nil {
+				r.Recorder.Event(&cluster, corev1.EventTypeWarning, "CheckpointStoreUnavailable", err.Error())
+			}
+		}
+	}
 	setCondition(status, orchestrationv1alpha1.ConditionControlPlaneReady, metav1.ConditionTrue, "Ready", "Slurm controllers, REST, and login are ready", cluster.Generation)
 	if accountingError == nil {
 		setCondition(status, orchestrationv1alpha1.ConditionAccountingReady, metav1.ConditionTrue, "Ready", "Slurm accounting is ready", cluster.Generation)
@@ -170,7 +194,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if err := r.updateStatus(ctx, &cluster, status); err != nil {
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	delay := requeueInterval
+	if accountingError != nil || workers.Reason == "RESTUnavailable" {
+		delay = outageRequeue
+	}
+	return ctrl.Result{RequeueAfter: delay}, nil
 }
 
 func validateSpec(spec orchestrationv1alpha1.HeterogeneousClusterSpec) error {
@@ -351,7 +379,7 @@ func (r *ClusterReconciler) reconcileREST(ctx context.Context, cluster *orchestr
 			Name:    "slurmrestd",
 			Image:   cluster.Spec.ControlPlane.Controllers.Image,
 			Command: []string{"slurmrestd"},
-			Args:    []string{"-a", "rest_auth/jwt", "-s", "slurmctld,slurmdbd", "-d", "v0.0.44", fmt.Sprintf("0.0.0.0:%d", render.SlurmRESTPort)},
+			Args:    []string{"-a", "rest_auth/jwt", "-s", "slurmctld,slurmdbd", "-d", "v0.0.45", fmt.Sprintf("0.0.0.0:%d", render.SlurmRESTPort)},
 			Env: []corev1.EnvVar{
 				{Name: "SLURM_CONF", Value: "/etc/slurm/slurm.conf"},
 				{Name: "SLURM_JWT", Value: "daemon"},
@@ -460,15 +488,24 @@ func (r *ClusterReconciler) notReady(ctx context.Context, cluster *orchestration
 	if reconcileError != nil {
 		return ctrl.Result{}, reconcileError
 	}
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	delay := requeueInterval
+	if reason == "RESTUnavailable" || reason == "JWTUnavailable" {
+		delay = outageRequeue
+	}
+	return ctrl.Result{RequeueAfter: delay}, nil
 }
 
 func (r *ClusterReconciler) updateStatus(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, status *orchestrationv1alpha1.HeterogeneousClusterStatus) error {
 	if reflect.DeepEqual(cluster.Status, *status) {
+		observeCluster(cluster)
 		return nil
 	}
 	cluster.Status = *status
-	return r.Status().Update(ctx, cluster)
+	if err := r.Status().Update(ctx, cluster); err != nil {
+		return err
+	}
+	observeCluster(cluster)
+	return nil
 }
 
 func setCondition(status *orchestrationv1alpha1.HeterogeneousClusterStatus, conditionType string, value metav1.ConditionStatus, reason, message string, generation int64) {

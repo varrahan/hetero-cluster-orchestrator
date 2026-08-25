@@ -1,9 +1,12 @@
 ARG GO_VERSION=1.26.7
-ARG SLURM_VERSION=25.11.7
-ARG SLURM_SHA256=8f71a55b755e41f07d0fc790e9d0c94bd810dc1b324cd308545b9a0fd5f66df6
+ARG GO_IMAGE_DIGEST=sha256:8dc5cc7dbd10cbbd0840a63d2b17b3ea1b4dc297ab54e16b9b54fcd2cad87018
+ARG UBUNTU_IMAGE_DIGEST=sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+ARG SLURM_VERSION=26.05.3
+ARG SLURM_SHA256=f4219b15b8e4e8dc2559052abfd760759598867cd28051896d3b09c0a06a2ab7
 
-FROM golang:${GO_VERSION}-bookworm AS operator-build
+FROM golang:${GO_VERSION}-bookworm@${GO_IMAGE_DIGEST} AS operator-build
 WORKDIR /src
+COPY src/shared /shared
 COPY src/slurm-operator/go.mod src/slurm-operator/go.sum ./
 RUN GOWORK=off go mod download
 COPY src/slurm-operator/ ./
@@ -14,7 +17,7 @@ COPY --from=operator-build /slurm-operator /slurm-operator
 USER 65532:65532
 ENTRYPOINT ["/slurm-operator"]
 
-FROM ubuntu:24.04 AS slurm-build
+FROM ubuntu:24.04@${UBUNTU_IMAGE_DIGEST} AS slurm-build
 ARG SLURM_VERSION
 ARG SLURM_SHA256
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -33,7 +36,7 @@ RUN curl --fail --location --output slurm.tar.bz2 \
     make -j"$(nproc)" && \
     make install DESTDIR=/install
 
-FROM ubuntu:24.04 AS slurm-control-plane
+FROM ubuntu:24.04@${UBUNTU_IMAGE_DIGEST} AS slurm-control-plane
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates libdbus-1-3 libhttp-parser2.9 libjson-c5 libjwt2 liblz4-1 \
     libmariadb3 libmunge2 libncurses6 libpam0g libreadline8t64 libyaml-0-2 \
