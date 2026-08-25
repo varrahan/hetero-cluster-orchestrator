@@ -8,9 +8,8 @@ import json
 import os
 import secrets
 import socket
-import threading
-from collections.abc import Callable
-from concurrent.futures import Future
+from contextlib import closing
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from .ring import Ring
@@ -27,17 +26,7 @@ class _UnixConnection(http.client.HTTPConnection):
         self.sock.connect(self._path)
 
 
-def _background(operation: Callable[[], Any]) -> Future[Any]:
-    future: Future[Any] = Future()
-
-    def run() -> None:
-        try:
-            future.set_result(operation())
-        except BaseException as error:
-            future.set_exception(error)
-
-    threading.Thread(target=run, daemon=True).start()
-    return future
+_background = ThreadPoolExecutor().submit
 
 
 def _read_ring(path: str) -> bytes:
@@ -62,7 +51,7 @@ class CheckpointClient:
         request_headers.update(headers or {})
         if body is not None:
             request_headers["Content-Type"] = "application/json"
-        with _UnixConnection(socket_path) as connection:
+        with closing(_UnixConnection(socket_path)) as connection:
             connection.request(method, path, body=body, headers=request_headers)
             response = connection.getresponse()
             data = response.read(16 << 20)

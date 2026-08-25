@@ -8,4 +8,7 @@ set -euo pipefail
 "$@" &
 child=$!
 trap 'kill -USR1 "$child" 2>/dev/null || true' USR1
+while kill -0 "$child" 2>/dev/null; do
+  wait "$child" || true
+done
 wait "$child"
