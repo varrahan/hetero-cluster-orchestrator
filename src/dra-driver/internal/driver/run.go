@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 )
 
@@ -82,6 +83,9 @@ func Run() error {
 	if err := helper.PublishResources(ctx, inv.resources()); err != nil {
 		return fmt.Errorf("publish resources: %w", err)
 	}
+	if err := publishInventory(ctx, client, nodeName, inv); err != nil {
+		return err
+	}
 
 	nriPlugin, err := stub.New(&nriDriver{state: plugin},
 		stub.WithPluginName("orchestration-dra"),
@@ -101,4 +105,34 @@ func Run() error {
 	case err := <-nriError:
 		return fmt.Errorf("run NRI plugin: %w", err)
 	}
+}
+
+func publishInventory(ctx context.Context, client kubernetes.Interface, nodeName string, inv *inventory) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("read node for inventory publication: %w", err)
+		}
+		_, encoded, hash, err := inv.summary(node.Status.NodeInfo.BootID)
+		if err != nil {
+			return err
+		}
+		if node.Annotations[inventoryBootIDAnnotation] == node.Status.NodeInfo.BootID && node.Annotations[inventoryHashAnnotation] != "" && node.Annotations[inventoryHashAnnotation] != hash {
+			return fmt.Errorf("DRA inventory changed within boot %q", node.Status.NodeInfo.BootID)
+		}
+		if node.Annotations[inventoryBootIDAnnotation] == node.Status.NodeInfo.BootID && node.Annotations[inventoryHashAnnotation] == hash && node.Annotations[inventoryAnnotation] == encoded {
+			return nil
+		}
+		copy := node.DeepCopy()
+		if copy.Annotations == nil {
+			copy.Annotations = map[string]string{}
+		}
+		copy.Annotations[inventoryAnnotation] = encoded
+		copy.Annotations[inventoryHashAnnotation] = hash
+		copy.Annotations[inventoryBootIDAnnotation] = node.Status.NodeInfo.BootID
+		if _, err := client.CoreV1().Nodes().Update(ctx, copy, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("publish DRA inventory: %w", err)
+		}
+		return nil
+	})
 }

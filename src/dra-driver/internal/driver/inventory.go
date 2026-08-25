@@ -2,7 +2,9 @@ package driver
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,12 +23,15 @@ import (
 )
 
 const (
-	annotationPrefix = "orchestration.gputpu.io/"
-	kindCPU          = "cpu"
-	kindMemory       = "memory"
-	kindGPU          = "gpu"
-	kindOpenTPU      = "opentpu"
-	attributeDomain  = "orchestration.gputpu.io/"
+	annotationPrefix          = "orchestration.gputpu.io/"
+	inventoryAnnotation       = annotationPrefix + "inventory-v1"
+	inventoryHashAnnotation   = annotationPrefix + "inventory-hash"
+	inventoryBootIDAnnotation = annotationPrefix + "inventory-boot-id"
+	kindCPU                   = "cpu"
+	kindMemory                = "memory"
+	kindGPU                   = "gpu"
+	kindOpenTPU               = "opentpu"
+	attributeDomain           = "orchestration.gputpu.io/"
 )
 
 type localDevice struct {
@@ -52,6 +57,36 @@ type localDevice struct {
 type inventory struct {
 	nodeName string
 	devices  map[string]localDevice
+}
+
+type inventorySummary struct {
+	Version int             `json:"version"`
+	BootID  string          `json:"bootID"`
+	Cells   []inventoryCell `json:"cells"`
+}
+
+type inventoryCell struct {
+	NUMA            int                `json:"numaNode"`
+	CPUs            int64              `json:"cpus"`
+	MemoryUnits     int64              `json:"memoryUnits"`
+	MemoryUnitBytes int64              `json:"memoryUnitBytes"`
+	GPUs            []inventoryGPU     `json:"gpus,omitempty"`
+	OpenTPU         []inventoryOpenTPU `json:"openTPU,omitempty"`
+}
+
+type inventoryGPU struct {
+	UUID  string `json:"uuid"`
+	Model string `json:"model"`
+	PCI   string `json:"pci"`
+}
+
+type inventoryOpenTPU struct {
+	Profile      string `json:"profile"`
+	Count        int64  `json:"count"`
+	MatrixSize   int64  `json:"matrixSize"`
+	CPUCores     int64  `json:"cpuCores"`
+	MemoryBytes  int64  `json:"memoryBytes"`
+	SharedMemory int64  `json:"sharedMemoryBytes"`
 }
 
 type openTPUConfig struct {
@@ -97,6 +132,65 @@ func discoverInventory(sysRoot, nodeName string, annotations map[string]string) 
 		slog.Warn("NVIDIA inventory unavailable", "error", err)
 	}
 	return inv, nil
+}
+
+func (inv *inventory) summary(bootID string) (inventorySummary, string, string, error) {
+	if bootID == "" {
+		return inventorySummary{}, "", "", errors.New("Kubernetes bootID is empty")
+	}
+	byNUMA := map[int]*inventoryCell{}
+	profiles := map[int]map[string]*inventoryOpenTPU{}
+	for _, device := range inv.devices {
+		cell := byNUMA[device.NUMA]
+		if cell == nil {
+			cell = &inventoryCell{NUMA: device.NUMA}
+			byNUMA[device.NUMA] = cell
+		}
+		switch device.Kind {
+		case kindCPU:
+			cell.CPUs++
+		case kindMemory:
+			if cell.MemoryUnitBytes != 0 && cell.MemoryUnitBytes != device.UnitBytes {
+				return inventorySummary{}, "", "", fmt.Errorf("NUMA node %d has mixed memory units", device.NUMA)
+			}
+			cell.MemoryUnitBytes = device.UnitBytes
+			cell.MemoryUnits++
+		case kindGPU:
+			cell.GPUs = append(cell.GPUs, inventoryGPU{UUID: device.UUID, Model: device.Model, PCI: device.PCI})
+		case kindOpenTPU:
+			if profiles[device.NUMA] == nil {
+				profiles[device.NUMA] = map[string]*inventoryOpenTPU{}
+			}
+			profile := profiles[device.NUMA][device.Profile]
+			if profile == nil {
+				profile = &inventoryOpenTPU{Profile: device.Profile, MatrixSize: device.MatrixSize, CPUCores: device.CPUCores, MemoryBytes: device.MemoryBytes, SharedMemory: device.SharedMemory}
+				profiles[device.NUMA][device.Profile] = profile
+			}
+			if profile.MatrixSize != device.MatrixSize || profile.CPUCores != device.CPUCores || profile.MemoryBytes != device.MemoryBytes || profile.SharedMemory != device.SharedMemory {
+				return inventorySummary{}, "", "", fmt.Errorf("OpenTPU profile %q has inconsistent footprints", device.Profile)
+			}
+			profile.Count++
+		}
+	}
+	result := inventorySummary{Version: 1, BootID: bootID}
+	for _, numa := range slices.Sorted(maps.Keys(byNUMA)) {
+		cell := byNUMA[numa]
+		slices.SortFunc(cell.GPUs, func(a, b inventoryGPU) int { return strings.Compare(a.UUID, b.UUID) })
+		for _, name := range slices.Sorted(maps.Keys(profiles[numa])) {
+			cell.OpenTPU = append(cell.OpenTPU, *profiles[numa][name])
+		}
+		result.Cells = append(result.Cells, *cell)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return inventorySummary{}, "", "", err
+	}
+	identity, err := json.Marshal(result.Cells)
+	if err != nil {
+		return inventorySummary{}, "", "", err
+	}
+	digest := sha256.Sum256(identity)
+	return result, string(encoded), hex.EncodeToString(digest[:]), nil
 }
 
 func (inv *inventory) discoverCPU(sysRoot string, reserve int) error {
