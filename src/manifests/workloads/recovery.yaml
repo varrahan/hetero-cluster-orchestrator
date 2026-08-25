@@ -1,0 +1,270 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: watchdog-daemon
+  namespace: slurm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: slurm-operator-node-recovery
+rules:
+- apiGroups: [""]
+  resources: [nodes]
+  verbs: [get, list, watch, update, patch]
+- apiGroups: [""]
+  resources: [nodes/status]
+  verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: slurm-operator-node-recovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: slurm-operator-node-recovery
+subjects:
+- kind: ServiceAccount
+  name: slurm-operator
+  namespace: slurm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: watchdog-daemon
+rules:
+- apiGroups: [""]
+  resources: [nodes]
+  verbs: [get, update, patch]
+- apiGroups: [""]
+  resources: [pods]
+  verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: watchdog-daemon
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: watchdog-daemon
+subjects:
+- kind: ServiceAccount
+  name: watchdog-daemon
+  namespace: slurm-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: watchdog-daemon
+  namespace: slurm-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: watchdog-daemon
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: watchdog-daemon
+    spec:
+      serviceAccountName: watchdog-daemon
+      hostPID: true
+      nodeSelector:
+        orchestration.gputpu.io/compute: "true"
+      tolerations:
+      - key: orchestration.gputpu.io/compute
+        operator: Exists
+        effect: NoSchedule
+      - key: orchestration.gputpu.io/hardware-degraded
+        operator: Exists
+        effect: NoSchedule
+      initContainers:
+      - name: install-probe
+        image: watchdog-daemon:dev
+        command: [cp, /usr/local/bin/watchdog-daemon, /host-bin/watchdog-daemon]
+        volumeMounts:
+        - name: probe-bin
+          mountPath: /host-bin
+      containers:
+      - name: watchdog
+        image: watchdog-daemon:dev
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: WATCHDOG_MEMORY_CHECK_BYTES
+          value: "67108864"
+        volumeMounts:
+        - name: socket
+          mountPath: /run/gputpu-watchdog
+        - name: sys
+          mountPath: /sys
+          readOnly: true
+        - name: dev
+          mountPath: /dev
+        - name: host
+          mountPath: /host
+          readOnly: true
+        readinessProbe:
+          exec:
+            command: [/usr/local/bin/watchdog-daemon, probe]
+          periodSeconds: 10
+      volumes:
+      - name: socket
+        hostPath:
+          path: /run/gputpu-watchdog
+          type: DirectoryOrCreate
+      - name: probe-bin
+        hostPath:
+          path: /var/lib/gputpu-watchdog/bin
+          type: DirectoryOrCreate
+      - name: sys
+        hostPath:
+          path: /sys
+          type: Directory
+      - name: dev
+        hostPath:
+          path: /dev
+          type: Directory
+      - name: host
+        hostPath:
+          path: /
+          type: Directory
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-problem-detector
+  namespace: slurm-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-problem-detector
+rules:
+- apiGroups: [""]
+  resources: [nodes]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [nodes/status]
+  verbs: [patch, update]
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-problem-detector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-problem-detector
+subjects:
+- kind: ServiceAccount
+  name: node-problem-detector
+  namespace: slurm-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hardware-fault-monitor
+  namespace: slurm-system
+data:
+  hardware-fault-monitor.json: |
+    {
+      "plugin": "custom",
+      "pluginConfig": {
+        "invoke_interval": "10s",
+        "timeout": "5s",
+        "max_output_length": 1024,
+        "concurrency": 1
+      },
+      "source": "watchdog-daemon",
+      "metricsReporting": false,
+      "conditions": [
+        {
+          "type": "HardwareFaultDetected",
+          "reason": "HardwareIsHealthy",
+          "message": "watchdog hardware checks passed"
+        }
+      ],
+      "rules": [
+        {
+          "type": "permanent",
+          "condition": "HardwareFaultDetected",
+          "reason": "HardwareFaultDetected",
+          "path": "/host-bin/watchdog-daemon",
+          "args": ["probe"]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-problem-detector
+  namespace: slurm-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-problem-detector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: node-problem-detector
+    spec:
+      serviceAccountName: node-problem-detector
+      nodeSelector:
+        orchestration.gputpu.io/compute: "true"
+      tolerations:
+      - key: orchestration.gputpu.io/compute
+        operator: Exists
+        effect: NoSchedule
+      - key: orchestration.gputpu.io/hardware-degraded
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: detector
+        image: registry.k8s.io/node-problem-detector/node-problem-detector:v1.35.3@sha256:b992945c77db8429e6f0b147fa8d59443773a1c0ff50d3dc3592230949720450
+        command: [/node-problem-detector]
+        args:
+        - --logtostderr
+        - --hostname-override=$(NODE_NAME)
+        - --config.custom-plugin-monitor=/config/hardware-fault-monitor.json
+        - --prometheus-port=0
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: probe-bin
+          mountPath: /host-bin
+          readOnly: true
+        - name: socket
+          mountPath: /run/gputpu-watchdog
+      volumes:
+      - name: config
+        configMap:
+          name: hardware-fault-monitor
+      - name: probe-bin
+        hostPath:
+          path: /var/lib/gputpu-watchdog/bin
+          type: DirectoryOrCreate
+      - name: socket
+        hostPath:
+          path: /run/gputpu-watchdog
+          type: DirectoryOrCreate

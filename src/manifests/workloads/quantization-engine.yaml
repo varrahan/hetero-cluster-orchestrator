@@ -19,6 +19,9 @@ spec:
       - key: orchestration.gputpu.io/compute
         operator: Exists
         effect: NoSchedule
+      - key: orchestration.gputpu.io/hardware-degraded
+        operator: Exists
+        effect: NoSchedule
       containers:
       - name: engine
         image: quantization-engine:dev

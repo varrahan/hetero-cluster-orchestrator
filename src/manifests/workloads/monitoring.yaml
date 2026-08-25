@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slurm-operator-alerts
+  namespace: slurm-system
+  labels:
+    prometheus_rule: "1"
+data:
+  alerts.yaml: |
+    groups:
+    - name: gputpu-orchestration
+      rules:
+      - alert: SlurmControlPlaneUnavailable
+        expr: gputpu_cluster_condition{condition="ControlPlaneReady"} == 0
+        for: 2m
+      - alert: SlurmAccountingUnavailable
+        expr: gputpu_cluster_condition{condition="AccountingReady"} == 0
+        for: 5m
+      - alert: ElasticDemandStuck
+        expr: gputpu_pending_job_age_seconds > 300
+        for: 5m
+      - alert: WorkerAllocationOrStartupStuck
+        expr: gputpu_worker_pool_workers{state="pending"} > 0
+        for: 5m
+      - alert: WorkerGRESValidationFailed
+        expr: kube_pod_init_container_status_terminated_reason{container="gres-init",reason!="Completed"} > 0
+        for: 2m
+      - alert: CheckpointStoreUnavailable
+        expr: gputpu_cluster_condition{condition="CheckpointStoreReady"} == 0
+        for: 5m
+      - alert: CheckpointStale
+        expr: gputpu_checkpoint_age_seconds > 900
+        for: 5m
+      - alert: HardwareRecoveryStuck
+        expr: gputpu_recovery_duration_seconds > 600
+        for: 5m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slurm-operator-dashboard
+  namespace: slurm-system
+  labels:
+    grafana_dashboard: "1"
+data:
+  gputpu-orchestration.json: |
+    {
+      "title": "GPU/TPU orchestration",
+      "panels": [
+        {"title":"Control plane and accounting","type":"timeseries","targets":[{"expr":"gputpu_cluster_condition"}]},
+        {"title":"Demand age by job and pool","type":"timeseries","targets":[{"expr":"gputpu_pending_job_age_seconds"}]},
+        {"title":"Allocation and worker startup","type":"timeseries","targets":[{"expr":"gputpu_worker_pool_workers"}]},
+        {"title":"GRES init failures","type":"timeseries","targets":[{"expr":"kube_pod_init_container_status_terminated_reason{container=\"gres-init\",reason!=\"Completed\"}"}]},
+        {"title":"Newest committed checkpoint age","type":"timeseries","targets":[{"expr":"gputpu_checkpoint_age_seconds"}]},
+        {"title":"Recovery phase and duration","type":"timeseries","targets":[{"expr":"gputpu_recovery_phase or gputpu_recovery_duration_seconds"}]}
+      ],
+      "schemaVersion": 39,
+      "version": 1
+    }

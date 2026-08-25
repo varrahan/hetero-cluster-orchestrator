@@ -5,7 +5,10 @@ resources:
 - crds/orchestration.gputpu.io_heterogeneousclusters.yaml
 - rbac/role.yaml
 - workloads/operator.yaml
+- workloads/network-policies.yaml
+- workloads/monitoring.yaml
 - workloads/deviceclasses.yaml
 - workloads/dra-driver.yaml
 - workloads/quantization-engine.yaml
+- workloads/recovery.yaml
 - workloads/worker-rbac.yaml

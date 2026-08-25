@@ -8,11 +8,13 @@ rules:
   - ""
   resources:
   - configmaps
-  - services
+  - pods
   verbs:
   - create
+  - delete
   - get
   - list
+  - patch
   - update
   - watch
 - apiGroups:
@@ -25,6 +27,24 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
   - secrets
   verbs:
@@ -32,10 +52,9 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - pods
+  - services
   verbs:
   - create
-  - delete
   - get
   - list
   - update
@@ -50,6 +69,16 @@ rules:
   - get
   - list
   - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
   - watch
 - apiGroups:
   - coordination.k8s.io

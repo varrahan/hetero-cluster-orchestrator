@@ -210,6 +210,9 @@ spec:
                 == x.partition).size() == 1)
           status:
             properties:
+              checkpointObservedAt:
+                format: date-time
+                type: string
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -269,6 +272,9 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              newestCommittedCheckpoint:
+                format: date-time
+                type: string
               observedGeneration:
                 format: int64
                 type: integer

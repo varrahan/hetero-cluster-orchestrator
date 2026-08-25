@@ -43,6 +43,9 @@ spec:
       containers:
       - name: operator
         image: slurm-operator:dev
+        ports:
+        - {name: metrics, containerPort: 8080}
+        - {name: health, containerPort: 8081}
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -52,6 +55,8 @@ spec:
           value: slurm-worker:dev
         - name: WORKER_MEMORY_HEADROOM
           value: 256Mi
+        - name: RECOVERY_REBOOT_TIMEOUT
+          value: 10m
         readinessProbe:
           httpGet:
             path: /readyz
@@ -66,6 +71,21 @@ spec:
             drop:
             - ALL
           readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slurm-operator-metrics
+  namespace: slurm-system
+  labels:
+    app.kubernetes.io/name: slurm-operator
+spec:
+  selector:
+    app.kubernetes.io/name: slurm-operator
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

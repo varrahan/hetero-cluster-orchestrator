@@ -6,7 +6,7 @@ metadata:
 spec:
   controlPlane:
     controllers:
-      image: slurm-control-plane:25.11.7
+      image: slurm-control-plane:26.05.3
       stateSaveClaim: slurm-state-rwx
     accounting:
       databaseSecretRef: slurm-mariadb

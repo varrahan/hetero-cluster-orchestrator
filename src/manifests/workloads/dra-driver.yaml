@@ -11,7 +11,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: [nodes]
-  verbs: [get, list, watch]
+  verbs: [get, list, watch, update, patch]
 - apiGroups: [resource.k8s.io]
   resources: [resourceclaims]
   verbs: [get]
@@ -53,6 +53,9 @@ spec:
         orchestration.gputpu.io/compute: "true"
       tolerations:
       - key: orchestration.gputpu.io/compute
+        operator: Exists
+        effect: NoSchedule
+      - key: orchestration.gputpu.io/hardware-degraded
         operator: Exists
         effect: NoSchedule
       containers:
