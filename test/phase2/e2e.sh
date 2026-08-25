@@ -64,17 +64,19 @@ phase1_demand_gone() {
     ! kubectl -n slurm-system get resourceclaims -o name | grep -q .
 }
 retry 120 phase1_demand_gone
+old_login=$(kubectl -n slurm-system get pod -l app.kubernetes.io/component=login -o jsonpath='{.items[0].metadata.name}')
 
 docker build -t orchestration-dra:dev -f "$root/src/dra-driver/Dockerfile" "$root"
 docker build -t slurm-worker:dev -f "$root/src/slurm-compute-node/Dockerfile" "$root"
-kind load docker-image --name "$cluster_name" orchestration-dra:dev slurm-worker:dev
+docker build -t watchdog-daemon:dev -f "$root/src/watchdog-daemon/Dockerfile" "$root"
+kind load docker-image --name "$cluster_name" orchestration-dra:dev slurm-worker:dev watchdog-daemon:dev
 
 compute_node=${cluster_name}-worker
 kubectl annotate node "$compute_node" --overwrite \
   orchestration.gputpu.io/memory-unit=1Gi \
   orchestration.gputpu.io/reserved-cores-per-numa=1 \
   orchestration.gputpu.io/reserved-memory-per-numa=1Gi \
-  'orchestration.gputpu.io/opentpu-profiles={"version":1,"profiles":[{"name":"m8","matrixSize":8,"numaNode":0,"slots":2,"cpuCores":2,"memory":"1Gi","sharedMemory":"512Mi"}]}'
+  'orchestration.gputpu.io/opentpu-profiles={"version":1,"profiles":[{"name":"m8","matrixSize":8,"numaNode":0,"slots":2,"cpuCores":1,"memory":"1Gi","sharedMemory":"512Mi"}]}'
 kubectl label node "$compute_node" --overwrite orchestration.gputpu.io/compute=true
 kubectl -n slurm-system wait --for=jsonpath='{.status.numberReady}'=1 daemonset/orchestration-dra --timeout=5m
 
@@ -110,6 +112,10 @@ kubectl -n slurm-system rollout restart deployment/slurm-operator
 kubectl -n slurm-system rollout status deployment/slurm-operator --timeout=3m
 kubectl -n slurm-system rollout status statefulset/research-slurmctld --timeout=3m
 kubectl -n slurm-system rollout status deployment/research-login --timeout=3m
+old_login_gone() {
+  ! kubectl -n slurm-system get pod "$old_login" >/dev/null 2>&1
+}
+retry 120 old_login_gone
 cluster_reconciled() {
   kubectl -n slurm-system get heterogeneouscluster research -o json | python3 -c '
 import json, sys
@@ -154,17 +160,17 @@ assert any(owner.get("name") == sys.argv[1] for owner in status.get("reservedFor
 ' "$node"
 }
 
-cpu_job=$("${login[@]}" sbatch --parsable --partition=compute --nodes=1 --cpus-per-task=2 --mem=1G --wrap='test -n "$SLURM_JOB_NODELIST"')
+cpu_job=$("${login[@]}" sbatch --parsable --partition=compute --nodes=1 --cpus-per-task=1 --mem=1G --wrap='test -n "$SLURM_JOB_NODELIST"')
 cpu_job=${cpu_job%%;*}
 retry 300 wait_job "$cpu_job"
 
-tpu_job=$("${login[@]}" sbatch --parsable --partition=compute --nodes=1 --cpus-per-task=2 --mem=1G --gres=tpu:opentpu_m8:1 --wrap='python3 /usr/local/bin/opentpu-runtime.py && sleep 20')
+tpu_job=$("${login[@]}" sbatch --parsable --partition=compute --nodes=1 --cpus-per-task=1 --mem=1G --gres=tpu:opentpu_m8:1 --wrap='python3 /usr/local/bin/opentpu-runtime.py && sleep 20')
 tpu_job=${tpu_job%%;*}
 retry 300 job_running "$tpu_job"
 retry 60 live_tpu_allocation
 retry 600 wait_job "$tpu_job"
 
-mixed_job=$("${login[@]}" sbatch --parsable --partition=compute --nodes=1 --cpus-per-task=1 : --partition=compute --nodes=1 --cpus-per-task=2 --gres=tpu:opentpu_m8:1 --wrap='test -n "$SLURM_JOB_NODELIST"')
+mixed_job=$("${login[@]}" sbatch --parsable --partition=compute --nodes=1 --cpus-per-task=1 : --partition=compute --nodes=1 --cpus-per-task=1 --gres=tpu:opentpu_m8:1 --wrap='test -n "$SLURM_JOB_NODELIST"')
 mixed_job=${mixed_job%%;*}
 retry 600 wait_job "$mixed_job"
 

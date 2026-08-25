@@ -133,10 +133,12 @@ func TestReconcileCreateUpdateRestartAndRepair(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/slurm/v0.0.44/jobs/":
+		case "/slurm/v0.0.45/jobs/":
 			_, _ = w.Write([]byte(`{"jobs":[{"job_id":1,"partition":"compute","state":{"current":["PENDING"]}}]}`))
-		case "/slurmdb/v0.0.44/clusters/":
+		case "/slurmdb/v0.0.45/clusters/":
 			_, _ = w.Write([]byte(`{"clusters":[{"name":"research"}]}`))
+		case "/slurm/v0.0.45/nodes/":
+			_, _ = w.Write([]byte(`{"nodes":[]}`))
 		default:
 			http.NotFound(w, request)
 		}

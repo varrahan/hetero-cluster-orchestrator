@@ -200,6 +200,17 @@ accounting_has_job() {
 }
 retry 120 accounting_has_job
 
+paused_node=$(kubectl -n slurm-system get pod -l app=mariadb -o jsonpath='{.items[0].spec.nodeName}')
+paused_container=$(kubectl -n slurm-system get pod -l app=mariadb -o jsonpath='{.items[0].status.containerStatuses[?(@.name=="mariadb")].containerID}')
+paused_container=${paused_container#containerd://}
+docker exec "$paused_node" ctr -n k8s.io tasks pause "$paused_container"
+kubectl -n slurm-system wait --for=condition=AccountingReady=false heterogeneouscluster/research --timeout=3m
+"${login[@]}" squeue --noheader --jobs "$job_id" | grep -q "$job_id"
+docker exec "$paused_node" ctr -n k8s.io tasks resume "$paused_container"
+paused_container=
+kubectl -n slurm-system wait --for=condition=AccountingReady heterogeneouscluster/research --timeout=5m
+retry 120 accounting_has_job
+
 kubectl -n slurm-system port-forward service/research-slurmrestd 16820:6820 >"$work/port-forward.log" 2>&1 &
 port_forward_pid=$!
 retry 30 curl --silent --output /dev/null http://127.0.0.1:16820/openapi/v3
@@ -220,7 +231,7 @@ PY
   curl --fail --silent \
     -H 'X-SLURM-USER-NAME: root' \
     -H "X-SLURM-USER-TOKEN: $token" \
-    http://127.0.0.1:16820/slurm/v0.0.44/jobs/ |
+    http://127.0.0.1:16820/slurm/v0.0.45/jobs/ |
     python3 -c 'import json, sys; jobs=json.load(sys.stdin).get("jobs", []); assert any(str(job.get("job_id")) == sys.argv[1] for job in jobs)' "$job_id"
 }
 retry 60 rest_has_job
@@ -249,4 +260,4 @@ backup_serves_job() {
 }
 retry 120 backup_serves_job
 
-echo "Phase 1 live gates passed"
+echo "Phase 1 control-plane, MariaDB outage, restart reconciliation, and failover gates passed"

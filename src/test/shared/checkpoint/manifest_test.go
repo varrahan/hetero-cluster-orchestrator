@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+func TestCommitMarkerBackwardCompatibility(t *testing.T) {
+	old := `{"checkpoint_version":2,"global_step":7,"manifest_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","committed_at":"2026-01-01T00:00:00Z"}`
+	var marker CommitMarker
+	if err := DecodeStrictJSON(strings.NewReader(old), &marker); err != nil {
+		t.Fatal(err)
+	}
+	if marker.SlurmJobID != 0 {
+		t.Fatalf("old marker job = %d, want zero", marker.SlurmJobID)
+	}
+}
+
 func validManifest() Manifest {
 	hash := strings.Repeat("0", 64)
 	return Manifest{CheckpointVersion: 2, RunID: "run", GlobalStep: 1, Epoch: 0, CreatedAt: time.Now().UTC().Format(time.RFC3339),

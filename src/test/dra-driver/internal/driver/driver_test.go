@@ -9,10 +9,12 @@ import (
 	"testing"
 
 	api "github.com/containerd/nri/pkg/api"
+	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 )
 
@@ -113,6 +115,45 @@ func TestInventoryAndClaimLifecycle(t *testing.T) {
 	}
 	if _, err := plugin.UnprepareResourceClaims(context.Background(), []kubeletplugin.NamespacedObject{{UID: claim.UID, NamespacedName: types.NamespacedName{Namespace: claim.Namespace, Name: claim.Name}}}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBootScopedInventoryPublication(t *testing.T) {
+	inv := &inventory{nodeName: "worker-a", devices: map[string]localDevice{
+		"cpu": {Name: "cpu", Kind: kindCPU, NUMA: 0, CPU: 1},
+		"mem": {Name: "mem", Kind: kindMemory, NUMA: 0, UnitBytes: 1 << 30},
+		"gpu": {Name: "gpu", Kind: kindGPU, NUMA: 0, UUID: "GPU-a", Model: "rtx_4050", PCI: "0000:01:00.0"},
+	}}
+	_, _, hashA, err := inv.summary("boot-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, hashB, err := inv.summary("boot-b")
+	if err != nil || hashA != hashB {
+		t.Fatalf("inventory identity changed across boots: %q != %q (err=%v)", hashA, hashB, err)
+	}
+	client := fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "worker-a"}, Status: corev1.NodeStatus{NodeInfo: corev1.NodeSystemInfo{BootID: "boot-a"}}})
+	if err := publishInventory(context.Background(), client, "worker-a", inv); err != nil {
+		t.Fatal(err)
+	}
+	node, err := client.CoreV1().Nodes().Get(context.Background(), "worker-a", metav1.GetOptions{})
+	if err != nil || node.Annotations[inventoryHashAnnotation] == "" || node.Annotations[inventoryBootIDAnnotation] != "boot-a" {
+		t.Fatalf("published Node=%#v err=%v", node, err)
+	}
+	inv.devices["cpu-2"] = localDevice{Name: "cpu-2", Kind: kindCPU, NUMA: 0, CPU: 2}
+	if err := publishInventory(context.Background(), client, "worker-a", inv); err == nil {
+		t.Fatal("changed inventory was accepted within one boot")
+	}
+	node.Status.NodeInfo.BootID = "boot-b"
+	if _, err := client.CoreV1().Nodes().UpdateStatus(context.Background(), node, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := publishInventory(context.Background(), client, "worker-a", inv); err != nil {
+		t.Fatalf("new boot inventory: %v", err)
+	}
+	node, _ = client.CoreV1().Nodes().Get(context.Background(), "worker-a", metav1.GetOptions{})
+	if node.Annotations[inventoryBootIDAnnotation] != "boot-b" {
+		t.Fatalf("inventory boot = %q, want boot-b", node.Annotations[inventoryBootIDAnnotation])
 	}
 }
 

@@ -22,6 +22,7 @@ func TestSlurm(t *testing.T) {
 		"SlurmctldHost=research-slurmctld-0(research-slurmctld-0.research-slurmctld.slurm-system.svc)\n",
 		"SlurmctldTimeout=30\n",
 		"SelectType=select/cons_tres\n",
+		"SchedulerParameters=bf_hetjob_immediate,bf_hetjob_prio=min\n",
 		"TreeWidth=65533\n",
 		"MaxNodeCount=8\n",
 		"GresTypes=gpu,tpu\n",

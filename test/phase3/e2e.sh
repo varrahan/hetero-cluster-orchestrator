@@ -104,7 +104,7 @@ login=(kubectl -n slurm-system exec deployment/research-login -c login --)
 job=$("${login[@]}" sbatch --parsable --requeue --signal=B:USR1@120 \
   --output=/dev/shm/ai-orch/slurm-%j.out \
   --partition=compute --nodes=1 --cpus-per-task=1 --mem=1G : \
-  --partition=compute --nodes=1 --cpus-per-task=2 --mem=1G --gres=tpu:opentpu_m8:1 \
+  --partition=compute --nodes=1 --cpus-per-task=1 --mem=1G --gres=tpu:opentpu_m8:1 \
   --wrap='srun --het-group=0,1 --ntasks=1 python3 -m checkpointing.smoke')
 job=${job%%;*}
 
@@ -120,16 +120,27 @@ marker_ready() {
   return 1
 }
 retry 300 marker_ready
+
+kubectl -n slurm-system patch service/minio --type=merge -p '{"spec":{"selector":{"app":"phase3-minio-unavailable"}}}'
+kubectl -n slurm-system wait --for=condition=CheckpointStoreReady=false heterogeneouscluster/research --timeout=3m
+"${login[@]}" squeue --noheader --jobs "$job" | grep -q "$job"
+kubectl -n slurm-system patch service/minio --type=merge -p '{"spec":{"selector":{"app":"phase3-minio"}}}'
+kubectl -n slurm-system wait --for=condition=CheckpointStoreReady heterogeneouscluster/research --timeout=3m
+retry 300 marker_ready
+
 old_workers=$(kubectl -n slurm-system get pods -l app.kubernetes.io/component=slurmd -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')
 sleep 20
 "${login[@]}" scontrol requeuehold "$job"
-requeued_pending() {
-	"${login[@]}" squeue --noheader --jobs "$job" --states=PENDING | grep -q "$job"
+requeued_held() {
+	"${login[@]}" scontrol show job "$job" | grep -q 'Reason=job_requeued_in_held_state'
 }
-retry 60 requeued_pending
+retry 60 requeued_held
 for worker in $old_workers; do kubectl -n slurm-system delete pod "$worker" --ignore-not-found --wait=false; done
 for worker in $old_workers; do kubectl -n slurm-system wait --for=delete "pod/$worker" --timeout=120s; done
-"${login[@]}" scontrol release "$job"
+if "${login[@]}" scontrol show job "$job" | grep -q 'JobState=CANCELLED'; then
+	"${login[@]}" scontrol requeue "$job"
+fi
+retry 120 "${login[@]}" scontrol release "$job"
 
 completed() {
   local state
@@ -145,4 +156,4 @@ new_workers=$(kubectl -n slurm-system get pods -l app.kubernetes.io/component=sl
 [[ $new_workers != "$old_workers" ]]
 ! kubectl -n slurm-system exec phase3-mc -- mc stat --insecure "local/checkpoints/checkpoints/phase3_${job}/step_00000006.complete" >/dev/null 2>&1
 
-echo "Phase 3 heterogeneous checkpoint, interrupted upload, placement change, and requeue gates passed"
+echo "Phase 3 heterogeneous checkpoint, MinIO/network outage, interrupted upload, placement change, and requeue gates passed"

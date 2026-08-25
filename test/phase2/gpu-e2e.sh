@@ -10,7 +10,7 @@ for command in kubectl nvidia-smi; do
   command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
 done
 
-if ! kubectl cluster-info >/dev/null 2>&1; then
+if [[ ${ENABLE_GPU:-0} != 1 ]]; then
   for command in docker kind; do
     command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
   done

@@ -148,10 +148,12 @@ func TestCommitAndImmutableConflict(t *testing.T) {
 		State:    checkpointapi.State{OptimizerMetadata: checkpointapi.Artifact{StoragePath: "optimizer_state.json", ByteLength: uint64(len(optimizer)), SHA256: hash(optimizer)}, Scheduler: map[string]json.RawMessage{}, RNG: map[string]checkpointapi.Artifact{"0": {StoragePath: "rng/rank_00000.bin", ByteLength: 1, SHA256: hash(rng)}}, DataCursor: map[string]json.RawMessage{}},
 	}
 	manifestBytes, _ := json.Marshal(manifest)
-	if _, err := store.commit(ctx, manifestBytes, &manifest); err != nil {
+	if marker, err := store.commit(ctx, manifestBytes, &manifest, 17); err != nil {
 		t.Fatal(err)
+	} else if marker.SlurmJobID != 17 {
+		t.Fatalf("commit marker job = %d, want 17", marker.SlurmJobID)
 	}
-	if _, err := store.commit(ctx, manifestBytes, &manifest); err != nil {
+	if _, err := store.commit(ctx, manifestBytes, &manifest, 17); err != nil {
 		t.Fatal("idempotent commit:", err)
 	}
 	want := checkpointapi.Compatibility{ModelID: "model", ModelSchemaHash: manifest.Metadata.ModelSchemaHash, DatasetID: "data", ContainerImageDigest: manifest.Metadata.ContainerImageDigest, Framework: "test", FrameworkVersion: "1", AdapterVersions: map[string]string{"cpu": "1"}}
