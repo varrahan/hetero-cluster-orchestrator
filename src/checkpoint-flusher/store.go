@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,8 +19,6 @@ import (
 )
 
 const operationTimeout = 120 * time.Second
-
-var commitName = regexp.MustCompile(`^step_([0-9]+)\.complete$`)
 
 type objectStore struct {
 	client     *minio.Client
@@ -119,11 +116,15 @@ func (s objectStore) latest(ctx context.Context, run string, want checkpointapi.
 		if item.Err != nil {
 			return latestResult{}, item.Err
 		}
-		match := commitName.FindStringSubmatch(strings.TrimPrefix(item.Key, prefix))
-		if match == nil {
+		name, ok := strings.CutPrefix(item.Key, prefix+"step_")
+		if !ok {
 			continue
 		}
-		step, err := strconv.ParseUint(match[1], 10, 64)
+		name, ok = strings.CutSuffix(name, ".complete")
+		if !ok {
+			continue
+		}
+		step, err := strconv.ParseUint(name, 10, 64)
 		if err != nil || before != nil && step >= *before {
 			continue
 		}

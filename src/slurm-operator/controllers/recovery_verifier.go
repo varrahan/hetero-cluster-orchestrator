@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/varrahan/hetero-cluster-orchestrater/src/shared/hardware"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
@@ -21,36 +22,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
-
-type recoveryInventory struct {
-	Version int                     `json:"version"`
-	BootID  string                  `json:"bootID"`
-	Cells   []recoveryInventoryCell `json:"cells"`
-}
-
-type recoveryInventoryCell struct {
-	NUMA            int                    `json:"numaNode"`
-	CPUs            int64                  `json:"cpus"`
-	MemoryUnits     int64                  `json:"memoryUnits"`
-	MemoryUnitBytes int64                  `json:"memoryUnitBytes"`
-	GPUs            []recoveryInventoryGPU `json:"gpus,omitempty"`
-	OpenTPU         []recoveryOpenTPU      `json:"openTPU,omitempty"`
-}
-
-type recoveryInventoryGPU struct {
-	UUID  string `json:"uuid"`
-	Model string `json:"model"`
-	PCI   string `json:"pci"`
-}
-
-type recoveryOpenTPU struct {
-	Profile      string `json:"profile"`
-	Count        int64  `json:"count"`
-	MatrixSize   int64  `json:"matrixSize"`
-	CPUCores     int64  `json:"cpuCores"`
-	MemoryBytes  int64  `json:"memoryBytes"`
-	SharedMemory int64  `json:"sharedMemoryBytes"`
-}
 
 func (r *RecoveryReconciler) reconcileReboot(ctx context.Context, node *corev1.Node, object *corev1.ConfigMap, state *recoveryState) (ctrl.Result, error) {
 	var current corev1.Node
@@ -228,8 +199,8 @@ func (r *RecoveryReconciler) ensureVerifierResources(ctx context.Context, node *
 	return nil
 }
 
-func decodeRecoveryInventory(raw, bootID string) (recoveryInventory, error) {
-	var inventory recoveryInventory
+func decodeRecoveryInventory(raw, bootID string) (hardware.Inventory, error) {
+	var inventory hardware.Inventory
 	if err := json.Unmarshal([]byte(raw), &inventory); err != nil || inventory.Version != 1 || inventory.BootID != bootID || len(inventory.Cells) == 0 {
 		return inventory, errors.New("pre-fault DRA inventory is missing or invalid")
 	}
@@ -241,7 +212,7 @@ func decodeRecoveryInventory(raw, bootID string) (recoveryInventory, error) {
 	return inventory, nil
 }
 
-func (r *RecoveryReconciler) verifierObjects(node *corev1.Node, owner *corev1.ConfigMap, state *recoveryState, cell recoveryInventoryCell) (*resourceapi.ResourceClaim, *batchv1.Job, error) {
+func (r *RecoveryReconciler) verifierObjects(node *corev1.Node, owner *corev1.ConfigMap, state *recoveryState, cell hardware.Cell) (*resourceapi.ResourceClaim, *batchv1.Job, error) {
 	name := verifierName(state.Incident, cell.NUMA)
 	cpuCount := int64(1)
 	memoryBytes := cell.MemoryUnitBytes
@@ -335,7 +306,7 @@ func verifierName(incident string, numa int) string {
 	return fmt.Sprintf("hardware-verify-%s-n%d", strings.ReplaceAll(incident[:13], "-", ""), numa)
 }
 
-func (r *RecoveryReconciler) deleteVerifierResources(ctx context.Context, state *recoveryState, inventory recoveryInventory) (bool, error) {
+func (r *RecoveryReconciler) deleteVerifierResources(ctx context.Context, state *recoveryState, inventory hardware.Inventory) (bool, error) {
 	complete := true
 	for _, cell := range inventory.Cells {
 		name := verifierName(state.Incident, cell.NUMA)

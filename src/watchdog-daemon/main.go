@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -44,8 +45,9 @@ func main() {
 }
 
 func run(args []string) error {
+	socket := cmp.Or(os.Getenv("WATCHDOG_SOCKET"), defaultSocket)
 	if len(args) > 0 && args[0] == "probe" {
-		return runProbe(socketPath())
+		return runProbe(socket)
 	}
 	if len(args) != 0 {
 		return fmt.Errorf("usage: watchdog-daemon [probe]")
@@ -72,14 +74,7 @@ func run(args []string) error {
 	}
 	go checker.run(ctx)
 	go watchReboot(ctx, client, nodeName)
-	return serve(ctx, checker, socketPath())
-}
-
-func socketPath() string {
-	if value := os.Getenv("WATCHDOG_SOCKET"); value != "" {
-		return value
-	}
-	return defaultSocket
+	return serve(ctx, checker, socket)
 }
 
 func serve(ctx context.Context, checker *healthChecker, path string) error {

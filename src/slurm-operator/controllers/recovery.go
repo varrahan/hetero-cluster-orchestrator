@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -235,23 +233,16 @@ func newRecoveryState(node *corev1.Node, now time.Time) (*recoveryState, error) 
 }
 
 func newIncident() (string, error) {
-	value := make([]byte, 16)
-	if _, err := rand.Read(value); err != nil {
+	value, err := uuid.NewRandom()
+	if err != nil {
 		return "", err
 	}
-	value[6] = value[6]&0x0f | 0x40
-	value[8] = value[8]&0x3f | 0x80
-	raw := hex.EncodeToString(value)
-	return raw[:8] + "-" + raw[8:12] + "-" + raw[12:16] + "-" + raw[16:20] + "-" + raw[20:], nil
+	return value.String(), nil
 }
 
 func validIncident(value string) bool {
-	parts := strings.Split(value, "-")
-	if len(parts) != 5 || len(parts[0]) != 8 || len(parts[1]) != 4 || len(parts[2]) != 4 || len(parts[3]) != 4 || len(parts[4]) != 12 || len(validation.IsValidLabelValue(value)) != 0 {
-		return false
-	}
-	_, err := hex.DecodeString(strings.Join(parts, ""))
-	return err == nil
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed.String() == value
 }
 
 func (r *RecoveryReconciler) now() time.Time {

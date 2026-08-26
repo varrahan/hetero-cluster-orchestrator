@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,7 @@ func run() error {
 	if !cpuCheck() {
 		return errors.New("deterministic CPU arithmetic failed")
 	}
-	memoryBytes, err := strconv.ParseInt(envDefault("MEMORY_CHECK_BYTES", "67108864"), 10, 64)
+	memoryBytes, err := strconv.ParseInt(cmp.Or(os.Getenv("MEMORY_CHECK_BYTES"), "67108864"), 10, 64)
 	if err != nil || memoryBytes < 1<<20 || memoryBytes > 1<<30 {
 		return errors.New("MEMORY_CHECK_BYTES must be between 1MiB and 1GiB")
 	}
@@ -117,11 +118,4 @@ func gpuCheck(raw string) error {
 		}
 	}
 	return nil
-}
-
-func envDefault(name, fallback string) string {
-	if value := os.Getenv(name); value != "" {
-		return value
-	}
-	return fallback
 }

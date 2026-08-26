@@ -5,6 +5,7 @@ ARG UBUNTU_IMAGE_DIGEST=sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2
 FROM golang:${GO_VERSION}-bookworm@${GO_IMAGE_DIGEST} AS build
 WORKDIR /src
 COPY src/watchdog-daemon/go.mod src/watchdog-daemon/go.sum* ./
+COPY src/shared /shared
 RUN GOWORK=off go mod download
 COPY src/watchdog-daemon/ ./
 RUN CGO_ENABLED=0 GOWORK=off go build -trimpath -ldflags='-s -w' -o /watchdog-daemon .

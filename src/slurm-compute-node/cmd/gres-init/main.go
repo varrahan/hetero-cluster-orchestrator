@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/varrahan/hetero-cluster-orchestrater/src/shared/hardware"
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -209,7 +210,7 @@ func validateGPU(device resourceapi.Device) error {
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
 		parts := strings.SplitN(line, ",", 2)
-		if len(parts) == 2 && strings.TrimSpace(parts[0]) == uuid && normalizeGPU(parts[1]) == model {
+		if len(parts) == 2 && strings.TrimSpace(parts[0]) == uuid && hardware.NormalizeGPU(parts[1]) == model {
 			return nil
 		}
 	}
@@ -333,11 +334,3 @@ func intAttr(device resourceapi.Device, name string) (int64, bool) {
 	return ptr.Deref(value, 0), value != nil
 }
 func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
-func normalizeGPU(value string) string {
-	value = strings.ToLower(value)
-	for _, word := range []string{"nvidia", "geforce", "laptop", "gpu"} {
-		value = strings.ReplaceAll(value, word, " ")
-	}
-	fields := strings.FieldsFunc(value, func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') })
-	return strings.Join(fields, "_")
-}

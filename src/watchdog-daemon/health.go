@@ -21,6 +21,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/varrahan/hetero-cluster-orchestrater/src/shared/hardware"
 	"golang.org/x/sys/unix"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -33,36 +34,6 @@ const (
 )
 
 var errUnsupported = errors.New("hardware check unsupported")
-
-type inventorySummary struct {
-	Version int             `json:"version"`
-	BootID  string          `json:"bootID"`
-	Cells   []inventoryCell `json:"cells"`
-}
-
-type inventoryCell struct {
-	NUMA            int                `json:"numaNode"`
-	CPUs            int64              `json:"cpus"`
-	MemoryUnits     int64              `json:"memoryUnits"`
-	MemoryUnitBytes int64              `json:"memoryUnitBytes"`
-	GPUs            []inventoryGPU     `json:"gpus,omitempty"`
-	OpenTPU         []inventoryOpenTPU `json:"openTPU,omitempty"`
-}
-
-type inventoryGPU struct {
-	UUID  string `json:"uuid"`
-	Model string `json:"model"`
-	PCI   string `json:"pci"`
-}
-
-type inventoryOpenTPU struct {
-	Profile      string `json:"profile"`
-	Count        int64  `json:"count"`
-	MatrixSize   int64  `json:"matrixSize"`
-	CPUCores     int64  `json:"cpuCores"`
-	MemoryBytes  int64  `json:"memoryBytes"`
-	SharedMemory int64  `json:"sharedMemoryBytes"`
-}
 
 type healthResult struct {
 	Status        string `json:"status"`
@@ -157,7 +128,7 @@ func (h *healthChecker) checkOnce(ctx context.Context) (healthResult, bool, erro
 	if result.BootID == "" || node.Annotations[inventoryBootIDAnnotation] != result.BootID || result.Inventory == "" || result.InventoryHash == "" {
 		return result, false, errors.New("DRA boot inventory is unavailable")
 	}
-	var inventory inventorySummary
+	var inventory hardware.Inventory
 	if err := json.Unmarshal([]byte(result.Inventory), &inventory); err != nil || inventory.Version != 1 || inventory.BootID != result.BootID || len(inventory.Cells) == 0 {
 		return result, false, errors.New("DRA boot inventory is invalid")
 	}
@@ -264,8 +235,8 @@ func memoryChecksum(numa, size int) error {
 	return nil
 }
 
-func checkNVIDIA(inventory inventorySummary) error {
-	expected := map[string]inventoryGPU{}
+func checkNVIDIA(inventory hardware.Inventory) error {
+	expected := map[string]hardware.GPU{}
 	for _, cell := range inventory.Cells {
 		for _, gpu := range cell.GPUs {
 			expected[gpu.UUID] = gpu
@@ -282,15 +253,15 @@ func checkNVIDIA(inventory inventorySummary) error {
 	if err != nil {
 		return fmt.Errorf("parse NVIDIA health query: %w", err)
 	}
-	actual := map[string]inventoryGPU{}
+	actual := map[string]hardware.GPU{}
 	for _, row := range rows {
 		if len(row) != 3 {
 			return errors.New("NVIDIA health query returned an invalid row")
 		}
-		gpu := inventoryGPU{UUID: strings.TrimSpace(row[0]), Model: normalizeGPU(row[1]), PCI: strings.ToLower(strings.TrimSpace(row[2]))}
+		gpu := hardware.GPU{UUID: strings.TrimSpace(row[0]), Model: hardware.NormalizeGPU(row[1]), PCI: strings.ToLower(strings.TrimSpace(row[2]))}
 		actual[gpu.UUID] = gpu
 	}
-	if !maps.EqualFunc(expected, actual, func(a, b inventoryGPU) bool { return a == b }) {
+	if !maps.EqualFunc(expected, actual, func(a, b hardware.GPU) bool { return a == b }) {
 		return errors.New("NVIDIA inventory identity changed")
 	}
 	return nil
@@ -328,15 +299,6 @@ func readInt(path string) (int, error) {
 		return 0, err
 	}
 	return strconv.Atoi(strings.TrimSpace(string(data)))
-}
-
-func normalizeGPU(value string) string {
-	value = strings.ToLower(value)
-	for _, word := range []string{"nvidia", "geforce", "laptop", "gpu"} {
-		value = strings.ReplaceAll(value, word, " ")
-	}
-	fields := strings.FieldsFunc(value, func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') })
-	return strings.Join(fields, "_")
 }
 
 type kernelEventState struct {

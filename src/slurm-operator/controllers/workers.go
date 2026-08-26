@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -341,11 +340,7 @@ func lessWaste(a, b workerCandidate, wanted resourceplan.Shape) bool {
 }
 
 func (r *ClusterReconciler) createWorker(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, pool orchestrationv1alpha1.WorkerPoolSpec, demand resourceplan.Demand) (*corev1.Pod, error) {
-	suffix := make([]byte, 5)
-	if _, err := rand.Read(suffix); err != nil {
-		return nil, err
-	}
-	podName := fmt.Sprintf("%s-%s-%s", cluster.Name, pool.Name, hex.EncodeToString(suffix))
+	podName := fmt.Sprintf("%s-%s-%s", cluster.Name, pool.Name, strings.ToLower(rand.Text()[:10]))
 	claimName := podName + "-resources"
 	shapeJSON, _ := json.Marshal(demand.Shape)
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{

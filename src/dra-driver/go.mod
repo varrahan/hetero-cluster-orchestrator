@@ -6,12 +6,15 @@ toolchain go1.26.7
 
 require (
 	github.com/containerd/nri v0.12.1
+	github.com/varrahan/hetero-cluster-orchestrater/src/shared v0.0.0
 	k8s.io/api v0.35.6
 	k8s.io/apimachinery v0.35.6
 	k8s.io/client-go v0.35.6
 	k8s.io/dynamic-resource-allocation v0.35.6
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 )
+
+replace github.com/varrahan/hetero-cluster-orchestrater/src/shared => ../shared
 
 require (
 	github.com/containerd/log v0.1.0 // indirect

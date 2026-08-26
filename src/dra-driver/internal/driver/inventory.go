@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/varrahan/hetero-cluster-orchestrater/src/shared/hardware"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
@@ -57,36 +58,6 @@ type localDevice struct {
 type inventory struct {
 	nodeName string
 	devices  map[string]localDevice
-}
-
-type inventorySummary struct {
-	Version int             `json:"version"`
-	BootID  string          `json:"bootID"`
-	Cells   []inventoryCell `json:"cells"`
-}
-
-type inventoryCell struct {
-	NUMA            int                `json:"numaNode"`
-	CPUs            int64              `json:"cpus"`
-	MemoryUnits     int64              `json:"memoryUnits"`
-	MemoryUnitBytes int64              `json:"memoryUnitBytes"`
-	GPUs            []inventoryGPU     `json:"gpus,omitempty"`
-	OpenTPU         []inventoryOpenTPU `json:"openTPU,omitempty"`
-}
-
-type inventoryGPU struct {
-	UUID  string `json:"uuid"`
-	Model string `json:"model"`
-	PCI   string `json:"pci"`
-}
-
-type inventoryOpenTPU struct {
-	Profile      string `json:"profile"`
-	Count        int64  `json:"count"`
-	MatrixSize   int64  `json:"matrixSize"`
-	CPUCores     int64  `json:"cpuCores"`
-	MemoryBytes  int64  `json:"memoryBytes"`
-	SharedMemory int64  `json:"sharedMemoryBytes"`
 }
 
 type openTPUConfig struct {
@@ -134,16 +105,16 @@ func discoverInventory(sysRoot, nodeName string, annotations map[string]string) 
 	return inv, nil
 }
 
-func (inv *inventory) summary(bootID string) (inventorySummary, string, string, error) {
+func (inv *inventory) summary(bootID string) (hardware.Inventory, string, string, error) {
 	if bootID == "" {
-		return inventorySummary{}, "", "", errors.New("Kubernetes bootID is empty")
+		return hardware.Inventory{}, "", "", errors.New("Kubernetes bootID is empty")
 	}
-	byNUMA := map[int]*inventoryCell{}
-	profiles := map[int]map[string]*inventoryOpenTPU{}
+	byNUMA := map[int]*hardware.Cell{}
+	profiles := map[int]map[string]*hardware.OpenTPU{}
 	for _, device := range inv.devices {
 		cell := byNUMA[device.NUMA]
 		if cell == nil {
-			cell = &inventoryCell{NUMA: device.NUMA}
+			cell = &hardware.Cell{NUMA: device.NUMA}
 			byNUMA[device.NUMA] = cell
 		}
 		switch device.Kind {
@@ -151,31 +122,31 @@ func (inv *inventory) summary(bootID string) (inventorySummary, string, string, 
 			cell.CPUs++
 		case kindMemory:
 			if cell.MemoryUnitBytes != 0 && cell.MemoryUnitBytes != device.UnitBytes {
-				return inventorySummary{}, "", "", fmt.Errorf("NUMA node %d has mixed memory units", device.NUMA)
+				return hardware.Inventory{}, "", "", fmt.Errorf("NUMA node %d has mixed memory units", device.NUMA)
 			}
 			cell.MemoryUnitBytes = device.UnitBytes
 			cell.MemoryUnits++
 		case kindGPU:
-			cell.GPUs = append(cell.GPUs, inventoryGPU{UUID: device.UUID, Model: device.Model, PCI: device.PCI})
+			cell.GPUs = append(cell.GPUs, hardware.GPU{UUID: device.UUID, Model: device.Model, PCI: device.PCI})
 		case kindOpenTPU:
 			if profiles[device.NUMA] == nil {
-				profiles[device.NUMA] = map[string]*inventoryOpenTPU{}
+				profiles[device.NUMA] = map[string]*hardware.OpenTPU{}
 			}
 			profile := profiles[device.NUMA][device.Profile]
 			if profile == nil {
-				profile = &inventoryOpenTPU{Profile: device.Profile, MatrixSize: device.MatrixSize, CPUCores: device.CPUCores, MemoryBytes: device.MemoryBytes, SharedMemory: device.SharedMemory}
+				profile = &hardware.OpenTPU{Profile: device.Profile, MatrixSize: device.MatrixSize, CPUCores: device.CPUCores, MemoryBytes: device.MemoryBytes, SharedMemory: device.SharedMemory}
 				profiles[device.NUMA][device.Profile] = profile
 			}
 			if profile.MatrixSize != device.MatrixSize || profile.CPUCores != device.CPUCores || profile.MemoryBytes != device.MemoryBytes || profile.SharedMemory != device.SharedMemory {
-				return inventorySummary{}, "", "", fmt.Errorf("OpenTPU profile %q has inconsistent footprints", device.Profile)
+				return hardware.Inventory{}, "", "", fmt.Errorf("OpenTPU profile %q has inconsistent footprints", device.Profile)
 			}
 			profile.Count++
 		}
 	}
-	result := inventorySummary{Version: 1, BootID: bootID}
+	result := hardware.Inventory{Version: 1, BootID: bootID}
 	for _, numa := range slices.Sorted(maps.Keys(byNUMA)) {
 		cell := byNUMA[numa]
-		slices.SortFunc(cell.GPUs, func(a, b inventoryGPU) int { return strings.Compare(a.UUID, b.UUID) })
+		slices.SortFunc(cell.GPUs, func(a, b hardware.GPU) int { return strings.Compare(a.UUID, b.UUID) })
 		for _, name := range slices.Sorted(maps.Keys(profiles[numa])) {
 			cell.OpenTPU = append(cell.OpenTPU, *profiles[numa][name])
 		}
@@ -183,11 +154,11 @@ func (inv *inventory) summary(bootID string) (inventorySummary, string, string, 
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
-		return inventorySummary{}, "", "", err
+		return hardware.Inventory{}, "", "", err
 	}
 	identity, err := json.Marshal(result.Cells)
 	if err != nil {
-		return inventorySummary{}, "", "", err
+		return hardware.Inventory{}, "", "", err
 	}
 	digest := sha256.Sum256(identity)
 	return result, string(encoded), hex.EncodeToString(digest[:]), nil
@@ -327,7 +298,7 @@ func (inv *inventory) discoverNVIDIA(sysRoot string) error {
 		if _, err := os.Stat("/dev/dxg"); err == nil {
 			path = "/dev/dxg"
 		}
-		inv.devices[name] = localDevice{Name: name, Kind: kindGPU, NUMA: numa, UUID: parts[1], Model: normalizeGPU(parts[2]), VRAMMiB: vram, PCI: pci, Path: path}
+		inv.devices[name] = localDevice{Name: name, Kind: kindGPU, NUMA: numa, UUID: parts[1], Model: hardware.NormalizeGPU(parts[2]), VRAMMiB: vram, PCI: pci, Path: path}
 	}
 	return nil
 }
@@ -472,14 +443,6 @@ func normalize(value string) string {
 	value = strings.ToLower(value)
 	fields := strings.FieldsFunc(value, func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') })
 	return strings.Join(fields, "_")
-}
-
-func normalizeGPU(value string) string {
-	value = strings.ToLower(value)
-	for _, word := range []string{"nvidia", "geforce", "laptop", "gpu"} {
-		value = strings.ReplaceAll(value, word, " ")
-	}
-	return normalize(value)
 }
 
 func intAttribute(value int64) resourceapi.DeviceAttribute {
