@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/varrahan/hetero-cluster-orchestrater/src/shared/hardware"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -94,7 +95,7 @@ func TestVerifierObjectsStayOnQuarantinedNode(t *testing.T) {
 	owner := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "state", Namespace: "slurm-system", UID: types.UID("state-uid")}}
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "worker-a"}}
 	state := &recoveryState{Incident: "11111111-2222-4333-8444-555555555555"}
-	cell := recoveryInventoryCell{NUMA: 1, CPUs: 4, MemoryUnits: 4, MemoryUnitBytes: 1 << 30, GPUs: []recoveryInventoryGPU{{UUID: "GPU-a"}}, OpenTPU: []recoveryOpenTPU{{Profile: "opentpu_m8", Count: 2, MatrixSize: 8, CPUCores: 2, MemoryBytes: 1 << 30, SharedMemory: 512 << 20}}}
+	cell := hardware.Cell{NUMA: 1, CPUs: 4, MemoryUnits: 4, MemoryUnitBytes: 1 << 30, GPUs: []hardware.GPU{{UUID: "GPU-a"}}, OpenTPU: []hardware.OpenTPU{{Profile: "opentpu_m8", Count: 2, MatrixSize: 8, CPUCores: 2, MemoryBytes: 1 << 30, SharedMemory: 512 << 20}}}
 	reconciler := &RecoveryReconciler{ClusterReconciler: &ClusterReconciler{Scheme: testScheme, WorkerImage: "worker:test"}, Namespace: "slurm-system"}
 	claim, job, err := reconciler.verifierObjects(node, owner, state, cell)
 	if err != nil {

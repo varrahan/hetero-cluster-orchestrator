@@ -33,9 +33,7 @@ diagnose() {
 trap cleanup EXIT
 trap 'diagnose "$LINENO"' ERR
 
-for command in docker kind kubectl python3; do
-  command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
-done
+require_commands docker kind kubectl python3
 
 KIND_CLUSTER="$cluster_name" ENABLE_NRI=1 KEEP_KIND=1 "$root/test/phase1/e2e.sh"
 
@@ -185,6 +183,7 @@ no_fit_stays_pending() {
 }
 retry 60 no_fit_stays_pending
 "${login[@]}" scancel "$no_fit_job"
+retry 180 sh -c 'test "$(kubectl -n slurm-system get pods -l app.kubernetes.io/component=slurmd --no-headers 2>/dev/null | wc -l)" = 0'
 
 restart_job=$("${login[@]}" sbatch --parsable --partition=compute --nodes=1 --cpus-per-task=1 --mem=1G --wrap='sleep 90')
 restart_job=${restart_job%%;*}

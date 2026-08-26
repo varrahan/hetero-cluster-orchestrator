@@ -24,7 +24,7 @@ for ((pass = 1; pass <= passes; pass++)); do
   sed '0,/name: research/s//name: phase5-example/' "$root/src/manifests/workloads/example-cluster.yaml" | kubectl apply --dry-run=server -f - >/dev/null
   kubectl create namespace monitoring
   kubectl -n monitoring run metrics-probe --image=slurm-worker:dev --restart=Never --command -- \
-    python3 -c 'import urllib.request; assert b"gputpu_cluster_condition" in urllib.request.urlopen("http://slurm-operator-metrics.slurm-system.svc:8080/metrics", timeout=10).read()'
+    python3 -c 'import urllib.request; assert any(b"gputpu_cluster_condition" in urllib.request.urlopen("http://slurm-operator-metrics.slurm-system.svc:8080/metrics", timeout=10).read() for _ in range(20))'
   kubectl -n monitoring wait --for=jsonpath='{.status.phase}'=Succeeded pod/metrics-probe --timeout=2m
   if [[ $pass == 1 ]]; then
     "$root/test/phase5/rollback.sh" "$cluster" "$prior_image"

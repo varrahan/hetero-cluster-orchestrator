@@ -31,9 +31,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'echo "Phase 1 live gate failed near line $LINENO" >&2' ERR
 
-for command in docker kind kubectl curl python3; do
-  command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
-done
+require_commands docker kind kubectl curl python3
 docker info >/dev/null
 
 mkdir "$work/state"

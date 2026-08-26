@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+require_commands() {
+  local name
+  for name; do
+    command -v "$name" >/dev/null || { echo "$name is required" >&2; return 1; }
+  done
+}
+
 retry() {
   local deadline=$((SECONDS + $1)) status
   shift

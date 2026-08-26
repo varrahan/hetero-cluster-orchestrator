@@ -36,9 +36,7 @@ diagnose() {
 trap cleanup EXIT
 trap 'diagnose "$LINENO"' ERR
 
-for command in docker kind kubectl openssl; do
-  command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
-done
+require_commands docker kind kubectl openssl
 
 KIND_CLUSTER="$cluster_name" KEEP_KIND=1 "$root/test/phase2/e2e.sh"
 

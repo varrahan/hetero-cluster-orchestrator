@@ -21,9 +21,7 @@ diagnose() {
 trap cleanup EXIT
 trap 'diagnose "$LINENO"' ERR
 
-for command in docker kind kubectl python3; do
-  command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
-done
+require_commands docker kind kubectl python3
 
 KIND_CLUSTER="$cluster_name" KEEP_KIND=1 "$root/test/phase3/e2e.sh"
 

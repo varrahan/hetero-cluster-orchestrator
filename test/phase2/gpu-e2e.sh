@@ -5,15 +5,12 @@ namespace=${SLURM_NAMESPACE:-slurm-system}
 cluster=${SLURM_CLUSTER:-research}
 model=${GPU_GRES_MODEL:-rtx_4050}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$root/test/lib.sh"
 
-for command in kubectl nvidia-smi; do
-  command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
-done
+require_commands kubectl nvidia-smi
 
 if [[ ${ENABLE_GPU:-0} != 1 ]]; then
-  for command in docker kind; do
-    command -v "$command" >/dev/null || { echo "$command is required" >&2; exit 1; }
-  done
+  require_commands docker kind
   export GPU_REAL_DOCKER
   GPU_REAL_DOCKER=$(command -v docker)
   export EXPECTED_GPU_UUID
