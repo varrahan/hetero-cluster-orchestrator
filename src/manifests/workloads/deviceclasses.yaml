@@ -33,3 +33,21 @@ spec:
   selectors:
   - cel:
       expression: device.driver == "orchestration.gputpu.io" && device.attributes["orchestration.gputpu.io"].kind == "opentpu"
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: computeclass
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "orchestration.gputpu.io" && device.attributes["orchestration.gputpu.io"].kind in ["cpu", "gpu", "opentpu"]
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: opticalclass
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "orchestration.optical.gputpu.io" && device.attributes["orchestration.optical.gputpu.io"].kind in ["switch", "cpo-photonic", "physical-asic"]

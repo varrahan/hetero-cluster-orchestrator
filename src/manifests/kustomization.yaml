@@ -8,7 +8,9 @@ resources:
 - workloads/network-policies.yaml
 - workloads/monitoring.yaml
 - workloads/deviceclasses.yaml
+- workloads/optical-admission-policy.yaml
 - workloads/dra-driver.yaml
+- workloads/optical-dra-driver.yaml
 - workloads/quantization-engine.yaml
 - workloads/recovery.yaml
 - workloads/worker-rbac.yaml

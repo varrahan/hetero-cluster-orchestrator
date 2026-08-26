@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: optical-claim-pairing.orchestration.gputpu.io
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+  matchConditions:
+  - name: optical-required
+    expression: >-
+      has(object.metadata.labels) &&
+      "orchestration.gputpu.io/optical-required" in object.metadata.labels &&
+      object.metadata.labels["orchestration.gputpu.io/optical-required"] == "true"
+  validations:
+  - expression: >-
+      object.spec.resourceClaims.exists(claim, claim.name == "compute") &&
+      object.spec.resourceClaims.exists(claim, claim.name == "optical")
+    message: optical-required Pods must declare compute and optical ResourceClaims
+  - expression: >-
+      object.spec.containers.exists(container,
+        container.resources.claims.exists(claim, claim.name == "compute") &&
+        container.resources.claims.exists(claim, claim.name == "optical"))
+    message: at least one container must consume both compute and optical ResourceClaims
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: optical-claim-pairing.orchestration.gputpu.io
+spec:
+  policyName: optical-claim-pairing.orchestration.gputpu.io
+  validationActions: [Deny]
