@@ -29,71 +29,6 @@ const (
 )
 
 type localDevice struct {
-	Name           string
-	Kind           string
-	NUMA           int
-	Model          string
-	Vendor         string
-	PartNumber     string
-	FormFactor     string
-	Protocol       string
-	ComponentRole  string
-	Management     string
-	SourceID       string
-	LinkID         string
-	Topology       string
-	Location       string
-	Ports          int64
-	BandwidthGbps  int64
-	WavelengthNM   int64
-	FullDuplex     bool
-	Lanes          int64
-	ReachMeters    int64
-	OutputPowerDBm int64
-}
-
-type inventory struct {
-	nodeName string
-	devices  map[string]localDevice
-}
-
-type opticalTopology struct {
-	Version int             `json:"version"`
-	Devices []opticalDevice `json:"devices"`
-}
-
-type opticalDevice struct {
-	Kind           string `json:"kind"`
-	Name           string `json:"name"`
-	NUMA           int    `json:"numaNode"`
-	Model          string `json:"model"`
-	Vendor         string `json:"vendor"`
-	PartNumber     string `json:"partNumber"`
-	FormFactor     string `json:"formFactor"`
-	Protocol       string `json:"protocol"`
-	ComponentRole  string `json:"componentRole"`
-	Management     string `json:"managementInterface"`
-	SourceID       string `json:"sourceId"`
-	LinkID         string `json:"linkId"`
-	Topology       string `json:"topology"`
-	Location       string `json:"location"`
-	Ports          int64  `json:"ports"`
-	BandwidthGbps  int64  `json:"bandwidthGbps"`
-	WavelengthNM   int64  `json:"wavelengthNm"`
-	FullDuplex     bool   `json:"fullDuplex"`
-	Lanes          int64  `json:"lanes"`
-	ReachMeters    int64  `json:"reachMeters"`
-	OutputPowerDBm int64  `json:"outputPowerDbm"`
-}
-
-type opticalSummary struct {
-	Version int             `json:"version"`
-	Driver  string          `json:"driver"`
-	BootID  string          `json:"bootID"`
-	Devices []summaryDevice `json:"devices"`
-}
-
-type summaryDevice struct {
 	Name           string `json:"name"`
 	Kind           string `json:"kind"`
 	NUMA           int    `json:"numaNode"`
@@ -115,6 +50,23 @@ type summaryDevice struct {
 	Lanes          int64  `json:"lanes,omitempty"`
 	ReachMeters    int64  `json:"reachMeters,omitempty"`
 	OutputPowerDBm int64  `json:"outputPowerDbm,omitempty"`
+}
+
+type inventory struct {
+	nodeName string
+	devices  map[string]localDevice
+}
+
+type opticalTopology struct {
+	Version int           `json:"version"`
+	Devices []localDevice `json:"devices"`
+}
+
+type opticalSummary struct {
+	Version int           `json:"version"`
+	Driver  string        `json:"driver"`
+	BootID  string        `json:"bootID"`
+	Devices []localDevice `json:"devices"`
 }
 
 func discoverInventory(raw string, nodeName string) (*inventory, error) {
@@ -193,29 +145,20 @@ func discoverInventory(raw string, nodeName string) (*inventory, error) {
 				return nil, fmt.Errorf("physical ASIC %q must be full duplex", name)
 			}
 		}
-		inv.devices[name] = localDevice{
-			Name:           name,
-			Kind:           kind,
-			NUMA:           device.NUMA,
-			Model:          strings.TrimSpace(device.Model),
-			Vendor:         vendor,
-			PartNumber:     strings.TrimSpace(device.PartNumber),
-			FormFactor:     formFactor,
-			Protocol:       protocol,
-			ComponentRole:  componentRole,
-			Management:     management,
-			SourceID:       strings.TrimSpace(device.SourceID),
-			LinkID:         strings.TrimSpace(device.LinkID),
-			Topology:       topology,
-			Location:       location,
-			Ports:          device.Ports,
-			BandwidthGbps:  device.BandwidthGbps,
-			WavelengthNM:   device.WavelengthNM,
-			FullDuplex:     device.FullDuplex,
-			Lanes:          device.Lanes,
-			ReachMeters:    device.ReachMeters,
-			OutputPowerDBm: device.OutputPowerDBm,
-		}
+		device.Name = name
+		device.Kind = kind
+		device.Model = strings.TrimSpace(device.Model)
+		device.Vendor = vendor
+		device.PartNumber = strings.TrimSpace(device.PartNumber)
+		device.FormFactor = formFactor
+		device.Protocol = protocol
+		device.ComponentRole = componentRole
+		device.Management = management
+		device.SourceID = strings.TrimSpace(device.SourceID)
+		device.LinkID = strings.TrimSpace(device.LinkID)
+		device.Topology = topology
+		device.Location = location
+		inv.devices[name] = device
 	}
 	return inv, nil
 }
@@ -242,30 +185,7 @@ func (inv *inventory) summary(bootID string) (string, string, string, error) {
 		BootID:  bootID,
 	}
 	for _, name := range slices.Sorted(maps.Keys(inv.devices)) {
-		device := inv.devices[name]
-		summary.Devices = append(summary.Devices, summaryDevice{
-			Name:           device.Name,
-			Kind:           device.Kind,
-			NUMA:           device.NUMA,
-			Model:          device.Model,
-			Vendor:         device.Vendor,
-			PartNumber:     device.PartNumber,
-			FormFactor:     device.FormFactor,
-			Protocol:       device.Protocol,
-			ComponentRole:  device.ComponentRole,
-			Management:     device.Management,
-			SourceID:       device.SourceID,
-			LinkID:         device.LinkID,
-			Topology:       device.Topology,
-			Location:       device.Location,
-			Ports:          device.Ports,
-			BandwidthGbps:  device.BandwidthGbps,
-			WavelengthNM:   device.WavelengthNM,
-			FullDuplex:     device.FullDuplex,
-			Lanes:          device.Lanes,
-			ReachMeters:    device.ReachMeters,
-			OutputPowerDBm: device.OutputPowerDBm,
-		})
+		summary.Devices = append(summary.Devices, inv.devices[name])
 	}
 	encoded, err := json.Marshal(summary)
 	if err != nil {
@@ -361,13 +281,6 @@ func (device localDevice) resourceDevice() resourceapi.Device {
 		Name:       device.Name,
 		Attributes: attrs,
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func normalize(value string) string {

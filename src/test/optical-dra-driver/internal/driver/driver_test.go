@@ -113,16 +113,16 @@ func TestRejectsInvalidOpticalTopology(t *testing.T) {
 
 	cases := map[string]opticalTopology{
 		"version":            {Version: 2, Devices: valid},
-		"unsupported kind":   {Version: 1, Devices: []opticalDevice{unsupported}},
-		"missing name":       {Version: 1, Devices: []opticalDevice{unnamed}},
-		"duplicate name":     {Version: 1, Devices: []opticalDevice{valid[0], duplicate}},
-		"missing topology":   {Version: 1, Devices: []opticalDevice{missingTopology}},
-		"missing endpoint":   {Version: 1, Devices: []opticalDevice{missingEndpoint}},
-		"invalid wavelength": {Version: 1, Devices: []opticalDevice{invalidWavelength}},
-		"half duplex":        {Version: 1, Devices: []opticalDevice{halfDuplex}},
-		"negative capacity":  {Version: 1, Devices: []opticalDevice{negativeCapacity}},
-		"malformed vendor":   {Version: 1, Devices: []opticalDevice{malformedVendor}},
-		"negative metadata":  {Version: 1, Devices: []opticalDevice{negativeMetadata}},
+		"unsupported kind":   {Version: 1, Devices: []localDevice{unsupported}},
+		"missing name":       {Version: 1, Devices: []localDevice{unnamed}},
+		"duplicate name":     {Version: 1, Devices: []localDevice{valid[0], duplicate}},
+		"missing topology":   {Version: 1, Devices: []localDevice{missingTopology}},
+		"missing endpoint":   {Version: 1, Devices: []localDevice{missingEndpoint}},
+		"invalid wavelength": {Version: 1, Devices: []localDevice{invalidWavelength}},
+		"half duplex":        {Version: 1, Devices: []localDevice{halfDuplex}},
+		"negative capacity":  {Version: 1, Devices: []localDevice{negativeCapacity}},
+		"malformed vendor":   {Version: 1, Devices: []localDevice{malformedVendor}},
+		"negative metadata":  {Version: 1, Devices: []localDevice{negativeMetadata}},
 	}
 	for name, topology := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -135,7 +135,7 @@ func TestRejectsInvalidOpticalTopology(t *testing.T) {
 			}
 		})
 	}
-	legacy := []opticalDevice{
+	legacy := []localDevice{
 		{Kind: kindSwitch, Name: "switch", Topology: "fabric-a", Location: "port-1"},
 		{Kind: kindCPOPhotonic, Name: "cpo", Topology: "fabric-a", WavelengthNM: 1310},
 		{Kind: kindPhysicalAsic, Name: "adapter", Topology: "fabric-a", FullDuplex: true},
@@ -146,7 +146,7 @@ func TestRejectsInvalidOpticalTopology(t *testing.T) {
 }
 
 func TestCoherentAOCProfile(t *testing.T) {
-	inv, err := discoverInventory(topologyJSON(t, []opticalDevice{{
+	inv, err := discoverInventory(topologyJSON(t, []localDevice{{
 		Kind:          kindPhysicalAsic,
 		Name:          "aoc-a",
 		Model:         "C.wire",
@@ -170,15 +170,15 @@ func TestCoherentAOCProfile(t *testing.T) {
 	}
 }
 
-func validOpticalDevices() []opticalDevice {
-	return []opticalDevice{
+func validOpticalDevices() []localDevice {
+	return []localDevice{
 		{Kind: kindSwitch, Name: "switch-a", NUMA: 0, Model: "R300", Vendor: "Lumentum", PartNumber: "R300", FormFactor: "Chassis Port", Protocol: "Any", Management: "gNMI", SourceID: "r300-a", Topology: "fabric-a", Location: "rack-a/port-1", Ports: 1},
 		{Kind: kindCPOPhotonic, Name: "cpo-a", NUMA: 0, Model: "ELSFP-350", Vendor: "Lumentum", PartNumber: "ELSFP-350", FormFactor: "ELSFP", Protocol: "Any", ComponentRole: "External Laser Source", SourceID: "elsfp-a", Topology: "fabric-a", Location: "package-0", WavelengthNM: 1311, OutputPowerDBm: 24},
 		{Kind: kindPhysicalAsic, Name: "adapter-a", NUMA: 0, Model: "1.6T 2xDR4 TRO OSFP", Vendor: "Lumentum", FormFactor: "OSFP", Protocol: "Ethernet", Management: "CMIS-5.3", LinkID: "link-a", Topology: "fabric-a", Location: "host-a/osfp-1", Ports: 1, BandwidthGbps: 1600, FullDuplex: true, Lanes: 8, ReachMeters: 500},
 	}
 }
 
-func topologyJSON(t *testing.T, devices []opticalDevice) string {
+func topologyJSON(t *testing.T, devices []localDevice) string {
 	t.Helper()
 	encoded, err := json.Marshal(opticalTopology{Version: 1, Devices: devices})
 	if err != nil {

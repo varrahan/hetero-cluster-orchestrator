@@ -261,7 +261,7 @@ func checkNVIDIA(inventory hardware.Inventory) error {
 		gpu := hardware.GPU{UUID: strings.TrimSpace(row[0]), Model: hardware.NormalizeGPU(row[1]), PCI: strings.ToLower(strings.TrimSpace(row[2]))}
 		actual[gpu.UUID] = gpu
 	}
-	if !maps.EqualFunc(expected, actual, func(a, b hardware.GPU) bool { return a == b }) {
+	if !maps.Equal(expected, actual) {
 		return errors.New("NVIDIA inventory identity changed")
 	}
 	return nil

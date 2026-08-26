@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	api "github.com/containerd/nri/pkg/api"
+	"k8s.io/utils/cpuset"
 )
 
 const claimAnnotation = "orchestration.gputpu.io/resource-claim"
@@ -18,12 +19,12 @@ func (n *nriDriver) CreateContainer(_ context.Context, pod *api.PodSandbox, _ *a
 	if claim == "" {
 		return nil, nil, nil
 	}
-	record, ok := n.state.preparedFor(pod.Namespace, claim)
+	record, ok := n.state.PreparedFor(pod.Namespace, claim)
 	if !ok {
 		return nil, nil, fmt.Errorf("prepared claim %s/%s is missing", pod.Namespace, claim)
 	}
 	adjustment := &api.ContainerAdjustment{}
-	adjustment.SetLinuxCPUSetCPUs(record.cpuSet())
+	adjustment.SetLinuxCPUSetCPUs(cpuset.New(record.CPUs...).String())
 	adjustment.SetLinuxCPUSetMems(fmt.Sprint(record.NUMA))
 	return adjustment, nil, nil
 }
@@ -39,12 +40,12 @@ func (n *nriDriver) Synchronize(_ context.Context, pods []*api.PodSandbox, conta
 		if pod == nil || pod.Annotations[claimAnnotation] == "" {
 			continue
 		}
-		record, ok := n.state.preparedFor(pod.Namespace, pod.Annotations[claimAnnotation])
+		record, ok := n.state.PreparedFor(pod.Namespace, pod.Annotations[claimAnnotation])
 		if !ok {
 			return nil, fmt.Errorf("prepared claim %s/%s is missing during synchronization", pod.Namespace, pod.Annotations[claimAnnotation])
 		}
 		update := &api.ContainerUpdate{ContainerId: container.Id}
-		update.SetLinuxCPUSetCPUs(record.cpuSet())
+		update.SetLinuxCPUSetCPUs(cpuset.New(record.CPUs...).String())
 		update.SetLinuxCPUSetMems(fmt.Sprint(record.NUMA))
 		updates = append(updates, update)
 	}

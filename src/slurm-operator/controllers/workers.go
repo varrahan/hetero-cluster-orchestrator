@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -357,7 +357,7 @@ func (r *ClusterReconciler) createWorker(ctx context.Context, cluster *orchestra
 		return nil, err
 	}
 	claimUse := []corev1.ResourceClaim{{Name: "allocation"}}
-	claimRef := []corev1.PodResourceClaim{{Name: "allocation", ResourceClaimName: ptr.To(claimName)}}
+	claimRef := []corev1.PodResourceClaim{{Name: "allocation", ResourceClaimName: new(claimName)}}
 	nodeSelector := map[string]string{"orchestration.gputpu.io/compute": "true"}
 	for key, value := range pool.NodeSelector {
 		nodeSelector[key] = value
@@ -372,21 +372,21 @@ func (r *ClusterReconciler) createWorker(ctx context.Context, cluster *orchestra
 			Name: "gres-init", Image: r.WorkerImage, Command: []string{"/bin/sh", "-ec"},
 			Args:      []string{"munged --force --key-file=/etc/munge/munge.key --socket=/run/munge/munge.socket.2; exec /usr/local/bin/gres-init"},
 			Resources: resources, VolumeMounts: workerMounts(), Env: workerEnv(cluster, pool, claimName),
-			SecurityContext: &corev1.SecurityContext{Privileged: ptr.To(true)},
+			SecurityContext: &corev1.SecurityContext{Privileged: new(true)},
 		}},
 		Containers: []corev1.Container{{
 			Name: "slurmd", Image: r.WorkerImage, Command: []string{"/bin/sh", "-ec"},
 			Args:      []string{"munged --force --key-file=/etc/munge/munge.key --socket=/run/munge/munge.socket.2; . /etc/slurm/worker.env; exec slurmd -D -Z --conf \"$SLURMD_CONF\""},
 			Resources: resources, VolumeMounts: workerMounts(), Env: workerEnv(cluster, pool, claimName),
-			SecurityContext: &corev1.SecurityContext{Privileged: ptr.To(true)},
+			SecurityContext: &corev1.SecurityContext{Privileged: new(true)},
 			ReadinessProbe:  execProbe("/bin/sh", "-ec", ". /etc/slurm/worker.env; scontrol show node \"$HOSTNAME\" >/dev/null"),
 		}},
 		Volumes: []corev1.Volume{
 			{Name: "worker-config", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 			{Name: "slurm-spool", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-			{Name: "munge-key", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.MungeKeySecretRef, Items: []corev1.KeyToPath{{Key: mungeKey, Path: mungeKey, Mode: ptr.To[int32](0400)}}}}},
+			{Name: "munge-key", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.MungeKeySecretRef, Items: []corev1.KeyToPath{{Key: mungeKey, Path: mungeKey, Mode: new(int32(0400))}}}}},
 			{Name: "munge-run", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-			{Name: "cgroup", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/sys/fs/cgroup", Type: ptr.To(corev1.HostPathDirectory)}}},
+			{Name: "cgroup", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/sys/fs/cgroup", Type: new(corev1.HostPathDirectory)}}},
 			{Name: "shared-memory", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: sharedMemory}}},
 		},
 	}
@@ -410,13 +410,13 @@ func (r *ClusterReconciler) createWorker(ctx context.Context, cluster *orchestra
 				{Name: "checkpoint-shm", MountPath: "/dev/shm/ai-orch"},
 				{Name: "checkpoint-store", MountPath: "/run/secrets/checkpoint-store", ReadOnly: true},
 			},
-			SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
+			SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: new(false), ReadOnlyRootFilesystem: new(true), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
 			ReadinessProbe:  execProbe("test", "-S", "/run/gputpu-checkpoint/flusher.sock"),
 		})
 		pod.Spec.Volumes = append(pod.Spec.Volumes,
 			corev1.Volume{Name: "checkpoint-socket", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-			corev1.Volume{Name: "checkpoint-shm", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev/shm/ai-orch", Type: ptr.To(corev1.HostPathDirectoryOrCreate)}}},
-			corev1.Volume{Name: "quantization-socket", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/run/gputpu-quantization", Type: ptr.To(corev1.HostPathDirectoryOrCreate)}}},
+			corev1.Volume{Name: "checkpoint-shm", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev/shm/ai-orch", Type: new(corev1.HostPathDirectoryOrCreate)}}},
+			corev1.Volume{Name: "quantization-socket", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/run/gputpu-quantization", Type: new(corev1.HostPathDirectoryOrCreate)}}},
 			corev1.Volume{Name: "checkpoint-store", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Checkpointing.ObjectStoreSecretRef}}},
 		)
 	}
@@ -528,11 +528,7 @@ func resourceClaim(namespace, name string, shape resourceplan.Shape, pool orches
 	for _, profile := range pool.Profiles {
 		profiles[profile.Gres] = profile
 	}
-	names := make([]string, 0, len(shape.GRES))
-	for name := range shape.GRES {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+	names := slices.Sorted(maps.Keys(shape.GRES))
 	for _, gres := range names {
 		profile, ok := profiles[gres]
 		if !ok {
@@ -639,11 +635,17 @@ func completeDriverSlices(slices []resourceapi.ResourceSlice) ([]resourceapi.Res
 
 func stringAttr(device resourceapi.Device, name string) (string, bool) {
 	value, ok := device.Attributes[resourceapi.QualifiedName(name)]
-	return ptr.Deref(value.StringValue, ""), ok && value.StringValue != nil
+	if !ok || value.StringValue == nil {
+		return "", false
+	}
+	return *value.StringValue, true
 }
 func intAttr(device resourceapi.Device, name string) (int64, bool) {
 	value, ok := device.Attributes[resourceapi.QualifiedName(name)]
-	return ptr.Deref(value.IntValue, 0), ok && value.IntValue != nil
+	if !ok || value.IntValue == nil {
+		return 0, false
+	}
+	return *value.IntValue, true
 }
 func capacityBytes(device resourceapi.Device, name string) (int64, bool) {
 	value, ok := device.Capacity[resourceapi.QualifiedName(name)]

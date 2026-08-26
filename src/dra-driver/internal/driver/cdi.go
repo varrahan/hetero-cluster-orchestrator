@@ -1,13 +1,14 @@
 package driver
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/varrahan/hetero-cluster-orchestrater/src/shared/draplugin"
 )
 
 type cdiSpec struct {
@@ -51,7 +52,7 @@ func writeOpenTPUCDI(path string, inv *inventory) error {
 		}}})
 	}
 	slices.SortFunc(spec.Devices, func(a, b cdiDevice) int { return strings.Compare(a.Name, b.Name) })
-	return atomicJSON(path, spec, 0644)
+	return draplugin.AtomicJSON(path, spec, 0644)
 }
 
 func generateNVIDIACDI(path string, inv *inventory) error {
@@ -119,33 +120,5 @@ func writeWSLNVIDIACDI(path string, inv *inventory) error {
 		}
 	}
 	slices.SortFunc(spec.Devices, func(a, b cdiDevice) int { return strings.Compare(a.Name, b.Name) })
-	return atomicJSON(path, spec, 0644)
-}
-
-func atomicJSON(path string, value any, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
-	defer temporary.Close()
-	if err := temporary.Chmod(mode); err != nil {
-		return err
-	}
-	encoder := json.NewEncoder(temporary)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(value); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporaryName, path)
+	return draplugin.AtomicJSON(path, spec, 0644)
 }

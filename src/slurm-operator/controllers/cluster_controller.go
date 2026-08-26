@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -275,15 +274,15 @@ func (r *ClusterReconciler) reconcileControllers(ctx context.Context, cluster *o
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		componentLabels := labels(cluster, "slurmctld")
 		object.Labels = componentLabels
-		object.Spec.Replicas = ptr.To(controlPlaneReplicas)
+		object.Spec.Replicas = new(controlPlaneReplicas)
 		object.Spec.ServiceName = name(cluster, "slurmctld")
 		object.Spec.PodManagementPolicy = appsv1.ParallelPodManagement
 		object.Spec.Selector = &metav1.LabelSelector{MatchLabels: componentLabels}
 		object.Spec.Template = corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{Labels: componentLabels, Annotations: map[string]string{"orchestration.gputpu.io/config-hash": configHash}},
 			Spec: corev1.PodSpec{
-				AutomountServiceAccountToken:  ptr.To(false),
-				TerminationGracePeriodSeconds: ptr.To[int64](30),
+				AutomountServiceAccountToken:  new(false),
+				TerminationGracePeriodSeconds: new(int64(30)),
 				Affinity:                      requiredAntiAffinity(componentLabels),
 				SecurityContext:               podFSGroup(64030),
 				InitContainers: []corev1.Container{{
@@ -325,7 +324,7 @@ func (r *ClusterReconciler) reconcileControllerPDB(ctx context.Context, cluster 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		componentLabels := labels(cluster, "slurmctld")
 		object.Labels = componentLabels
-		object.Spec.MinAvailable = ptr.To(intstr.FromInt32(1))
+		object.Spec.MinAvailable = new(intstr.FromInt32(1))
 		object.Spec.MaxUnavailable = nil
 		object.Spec.Selector = &metav1.LabelSelector{MatchLabels: componentLabels}
 		return controllerutil.SetControllerReference(cluster, object, r.Scheme)
@@ -374,7 +373,7 @@ func (r *ClusterReconciler) reconcileDatabase(ctx context.Context, cluster *orch
 
 func (r *ClusterReconciler) reconcileREST(ctx context.Context, cluster *orchestrationv1alpha1.HeterogeneousCluster, configHash string) error {
 	return r.reconcileDeployment(ctx, cluster, "slurmrestd", controlPlaneReplicas, configHash, corev1.PodSpec{
-		SecurityContext: &corev1.PodSecurityContext{RunAsUser: ptr.To[int64](64031), RunAsGroup: ptr.To[int64](64031), RunAsNonRoot: ptr.To(true)},
+		SecurityContext: &corev1.PodSecurityContext{RunAsUser: new(int64(64031)), RunAsGroup: new(int64(64031)), RunAsNonRoot: new(true)},
 		Containers: []corev1.Container{{
 			Name:    "slurmrestd",
 			Image:   cluster.Spec.ControlPlane.Controllers.Image,
@@ -416,7 +415,7 @@ func (r *ClusterReconciler) reconcileDeployment(ctx context.Context, cluster *or
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, object, func() error {
 		componentLabels := labels(cluster, component)
 		object.Labels = componentLabels
-		object.Spec.Replicas = ptr.To(replicas)
+		object.Spec.Replicas = new(replicas)
 		object.Spec.Selector = &metav1.LabelSelector{MatchLabels: componentLabels}
 		object.Spec.Template = corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{Labels: componentLabels, Annotations: map[string]string{"orchestration.gputpu.io/config-hash": configHash}},
@@ -557,12 +556,12 @@ func commonVolumes(cluster *orchestrationv1alpha1.HeterogeneousCluster) []corev1
 }
 
 func jwtVolume(cluster *orchestrationv1alpha1.HeterogeneousCluster) corev1.Volume {
-	return corev1.Volume{Name: "jwt", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.JWTKeySecretRef, Items: []corev1.KeyToPath{{Key: jwtKey, Path: jwtKey, Mode: ptr.To[int32](0440)}}}}}
+	return corev1.Volume{Name: "jwt", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.JWTKeySecretRef, Items: []corev1.KeyToPath{{Key: jwtKey, Path: jwtKey, Mode: new(int32(0440))}}}}}
 }
 
 func authVolumes(cluster *orchestrationv1alpha1.HeterogeneousCluster) []corev1.Volume {
 	return []corev1.Volume{
-		{Name: "munge-key", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.MungeKeySecretRef, Items: []corev1.KeyToPath{{Key: mungeKey, Path: mungeKey, Mode: ptr.To[int32](0400)}}}}},
+		{Name: "munge-key", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: cluster.Spec.Authentication.MungeKeySecretRef, Items: []corev1.KeyToPath{{Key: mungeKey, Path: mungeKey, Mode: new(int32(0400))}}}}},
 		{Name: "munge-run", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 	}
 }
@@ -650,5 +649,5 @@ exec slurmdbd -D`
 
 func podFSGroup(group int64) *corev1.PodSecurityContext {
 	policy := corev1.FSGroupChangeOnRootMismatch
-	return &corev1.PodSecurityContext{FSGroup: ptr.To(group), FSGroupChangePolicy: &policy}
+	return &corev1.PodSecurityContext{FSGroup: new(group), FSGroupChangePolicy: &policy}
 }

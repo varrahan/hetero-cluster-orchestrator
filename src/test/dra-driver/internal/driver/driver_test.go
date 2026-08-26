@@ -91,7 +91,11 @@ func TestInventoryAndClaimLifecycle(t *testing.T) {
 	for name, device := range inv.devices {
 		changed.devices[name] = device
 	}
-	for _, name := range plugin.prepared[claim.UID].Devices {
+	prepared, ok := plugin.PreparedFor(claim.Namespace, claim.Name)
+	if !ok {
+		t.Fatal("prepared claim is missing")
+	}
+	for _, name := range prepared.Devices {
 		device := changed.devices[name]
 		if device.Kind == kindMemory {
 			device.UnitBytes *= 2

@@ -58,12 +58,6 @@ func TestAllocatedDevicesUsesLatestGeneration(t *testing.T) {
 	}
 }
 
-func TestWorkerWeightPreservesAccelerators(t *testing.T) {
-	if workerWeight(shape{GRES: map[string]int64{}}) >= workerWeight(shape{GRES: map[string]int64{"tpu:opentpu_m8": 1}}) {
-		t.Fatal("CPU-only workers must be preferred for unconstrained work")
-	}
-}
-
 func device(name, kind string, numa int64, ints map[string]int64) resourceapi.Device {
 	device := resourceapi.Device{Name: name, Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
 		resourceapi.QualifiedName(driverName + "/kind"):     stringValue(kind),

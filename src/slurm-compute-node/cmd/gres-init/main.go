@@ -252,7 +252,11 @@ func renderAndCheck(devices []resourceapi.Device, wanted shape) error {
 	}
 	slices.Sort(gresSummary)
 	realMemory := max((wanted.MemoryBytes-wanted.SharedMemoryBytes)>>20, 1)
-	dynamic := fmt.Sprintf("CPUs=%d RealMemory=%d Sockets=1 CoresPerSocket=%d ThreadsPerCore=1 NodeAddr=%s Feature=pool_%s Weight=%d", wanted.CPUs, realMemory, wanted.CPUs, os.Getenv("POD_IP"), strings.ReplaceAll(os.Getenv("WORKER_POOL"), "-", "_"), workerWeight(wanted))
+	weight := 1
+	if len(wanted.GRES) > 0 {
+		weight = 2
+	}
+	dynamic := fmt.Sprintf("CPUs=%d RealMemory=%d Sockets=1 CoresPerSocket=%d ThreadsPerCore=1 NodeAddr=%s Feature=pool_%s Weight=%d", wanted.CPUs, realMemory, wanted.CPUs, os.Getenv("POD_IP"), strings.ReplaceAll(os.Getenv("WORKER_POOL"), "-", "_"), weight)
 	if len(gresSummary) > 0 {
 		dynamic += " Gres=" + strings.Join(gresSummary, ",")
 	}
@@ -287,13 +291,6 @@ func renderAndCheck(devices []resourceapi.Device, wanted shape) error {
 		return fmt.Errorf("slurmd local GRES validation failed: %w: %s", err, output)
 	}
 	return nil
-}
-
-func workerWeight(wanted shape) int {
-	if len(wanted.GRES) > 0 {
-		return 2
-	}
-	return 1
 }
 
 func allowedSets(path string) (string, string, error) {

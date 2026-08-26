@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -259,8 +258,8 @@ func (r *RecoveryReconciler) verifierObjects(node *corev1.Node, owner *corev1.Co
 		corev1.ResourceMemory: *resource.NewQuantity(memoryCount*cell.MemoryUnitBytes, resource.BinarySI),
 	}
 	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: r.Namespace, Labels: labels}}
-	job.Spec.BackoffLimit = ptr.To[int32](0)
-	job.Spec.ActiveDeadlineSeconds = ptr.To[int64](int64(verifierTimeout.Seconds()))
+	job.Spec.BackoffLimit = new(int32(0))
+	job.Spec.ActiveDeadlineSeconds = new(int64(verifierTimeout.Seconds()))
 	job.Spec.Template = corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{
 		RestartPolicy:      corev1.RestartPolicyNever,
 		ServiceAccountName: "slurm-worker",
@@ -269,7 +268,7 @@ func (r *RecoveryReconciler) verifierObjects(node *corev1.Node, owner *corev1.Co
 			{Key: "orchestration.gputpu.io/compute", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
 			{Key: hardwareDegradedTaint, Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
 		},
-		ResourceClaims: []corev1.PodResourceClaim{{Name: "verification", ResourceClaimName: ptr.To(name)}},
+		ResourceClaims: []corev1.PodResourceClaim{{Name: "verification", ResourceClaimName: new(name)}},
 		Containers: []corev1.Container{{
 			Name: "verifier", Image: r.WorkerImage, Command: []string{"/usr/local/bin/hardware-verifier"},
 			Env: []corev1.EnvVar{
@@ -279,7 +278,7 @@ func (r *RecoveryReconciler) verifierObjects(node *corev1.Node, owner *corev1.Co
 				{Name: "PYTHONDONTWRITEBYTECODE", Value: "1"},
 			},
 			Resources:       corev1.ResourceRequirements{Requests: resources.DeepCopy(), Limits: resources.DeepCopy(), Claims: []corev1.ResourceClaim{{Name: "verification"}}},
-			SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
+			SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: new(false), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
 			VolumeMounts:    []corev1.VolumeMount{{Name: "shared-memory", MountPath: "/dev/shm"}},
 		}},
 		Volumes: []corev1.Volume{{Name: "shared-memory", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: resource.NewQuantity(sharedMemory, resource.BinarySI)}}}},
