@@ -6,6 +6,7 @@ use (
 	./src/checkpoint-flusher
 	./src/slurm-operator
 	./src/dra-driver
+	./src/optical-dra-driver
 	./src/quantization-engine
 	./src/shared
 	./src/slurm-compute-node

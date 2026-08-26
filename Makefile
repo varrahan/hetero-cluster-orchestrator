@@ -4,6 +4,7 @@ GO_MODULES := \
 	src/shared \
 	src/checkpoint-flusher \
 	src/quantization-engine \
+	src/optical-dra-driver \
 	src/slurm-operator \
 	src/dra-driver \
 	src/slurm-compute-node \
@@ -17,7 +18,7 @@ SHELL_FILES := $(shell find test -type f -name '*.sh' -print 2>/dev/null)
 .PHONY: all build test generate manifests verify fmt fmt-check vet versions \
 	verify-versions manifests-check generated-check python-check python-test ring-lib json-check shell-check \
 	phase1-e2e phase2-e2e phase2-gpu-e2e phase3-e2e phase4-e2e \
-	phase5-e2e examples-check release-manifests
+	phase5-e2e optical-demo examples-check release-manifests
 
 all: build
 
@@ -25,6 +26,7 @@ build: python-check ring-lib
 	@mkdir -p "$(BIN_DIR)"
 	@cd src/slurm-operator && GOWORK=off go build -o "$(BIN_DIR)/slurm-operator" .
 	@cd src/dra-driver && GOWORK=off go build -o "$(BIN_DIR)/dra-driver" .
+	@cd src/optical-dra-driver && GOWORK=off go build -o "$(BIN_DIR)/optical-dra-driver" .
 	@cd src/slurm-compute-node && GOWORK=off go build -o "$(BIN_DIR)" ./cmd/...
 	@cd src/checkpoint-flusher && GOWORK=off go build -o "$(BIN_DIR)/checkpoint-flusher" .
 	@cd src/quantization-engine && GOWORK=off go build -o "$(BIN_DIR)/quantization-engine" .
@@ -62,6 +64,9 @@ phase2-e2e:
 
 phase2-gpu-e2e:
 	./test/phase2/gpu-e2e.sh
+
+optical-demo:
+	./test/optical/e2e.sh
 
 phase3-e2e:
 	./test/phase3/e2e.sh
