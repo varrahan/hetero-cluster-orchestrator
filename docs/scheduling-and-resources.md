@@ -12,11 +12,75 @@ NVIDIA, CPU, NUMA-memory, and OpenTPU behavior ships in one multi-provider
 `dra-driver` binary and node-plugin image. Providers share the same lifecycle
 and topology attributes; they are not independently deployed drivers in v1.
 
+Optical networking ships as the independent
+`orchestration.optical.gputpu.io` DRA driver. It does not import or mutate the
+compute, Slurm, or shared-memory paths. The driver reserves node-local optical
+switch endpoints, CPO silicon-photonic devices, and full-duplex physical
+adapter ASICs; an external fabric controller remains responsible for hardware
+programming.
+
 This design uses the stable `resource.k8s.io/v1` core. It does not depend on
 device taints, consumable capacity, partitionable devices, resource health, or
 DRA-managed node-allocatable resources because those features are not stable in
 the target baseline. See the Kubernetes
 [DRA feature documentation](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/).
+
+## Optical resource pairing
+
+Nodes publish optical inventory through the
+`orchestration.gputpu.io/optical-topology-v1` annotation. Version 1 requires a
+unique name and topology identity for every device, a location for each switch
+endpoint, a positive `wavelengthNm` for CPO devices, and `fullDuplex: true` for
+physical adapter ASICs. Missing annotations advertise no optical devices;
+invalid annotations prevent the optical plugin from starting.
+
+`computeclass` selects CPU, NVIDIA, or OpenTPU devices from the compute driver.
+`opticalclass` selects `switch`, `cpo-photonic`, and `physical-asic` devices
+from the optical driver. An optical claim requests one of each kind and uses
+the `orchestration.optical.gputpu.io/topology` match attribute so the selected
+devices belong to one fabric.
+
+Pods opting into optical networking set
+`orchestration.gputpu.io/optical-required=true`, declare claims named `compute`
+and `optical`, and have at least one container consume both. Admission enforces
+that Pod shape. Kubernetes admission cannot inspect referenced ResourceClaims
+to confirm their DeviceClasses, so claim creation remains a trusted deployment
+boundary. The canonical manifests are in
+`src/optical-dra-driver/examples/dual-claim-pod.yaml`.
+
+### Vendor optical profiles
+
+Version 1 also accepts optional `vendor`, `partNumber`, `formFactor`,
+`protocol`, `componentRole`, `managementInterface`, `sourceId`, `linkId`,
+`lanes`, `reachMeters`, and `outputPowerDbm` fields. Selector-oriented strings
+are normalized to lowercase identifiers; part numbers and source/link IDs are
+preserved exactly. These fields are allocation metadata, not control-plane
+credentials or vendor API configuration.
+
+The Lumentum profile models each [R300 OCS](https://www.lumentum.com/en/products/300x300-optical-circuit-switch-ocs)
+node-facing port as one switch device and each
+[ELSFP-350](https://www.lumentum.com/en/products/external-laser-source-els-module-ultra-high-power-laser)
+output as one CPO device. Its
+[1.6T 2xDR4 TRO OSFP](https://www.lumentum.com/en/products/16t-2dr4-tro-osfp-transceiver-module)
+is a full-duplex physical adapter. gNMI path provisioning and CMIS module
+management remain external to DRA.
+
+Coherent [datacom transceivers](https://www.coherent.com/networking/transceivers)
+and [active optical cables](https://www.coherent.com/networking/active-optical-cables)
+are physical adapters. An AOC entry represents only the local active endpoint;
+`linkId` correlates it with externally managed topology and does not allocate
+the remote endpoint. Representative inventories and vendor-selecting claims
+are in `src/optical-dra-driver/examples/vendor-profiles.yaml`.
+
+### Software-only optical demonstration
+
+`make optical-demo` creates a disposable NRI-enabled kind cluster, advertises a
+mixed Lumentum/Coherent topology through the node annotation, starts both DRA
+drivers, and verifies ResourceSlices, the compute and optical allocations,
+plugin preparation, and admission rejection. `KEEP_KIND=1 make optical-demo`
+retains the cluster and running demonstration Pod for inspection. Docker,
+kind, kubectl, and Python 3 are required; no optical hardware or Slurm services
+are used.
 
 ## Dedicated compute nodes
 
@@ -191,6 +255,9 @@ A resource path is correct only when all of these hold:
 
 - two concurrent claims never receive the same CPU, memory unit, GPU, or
   OpenTPU slot;
+- two concurrent optical claims never prepare the same switch endpoint, CPO
+  device, or physical adapter ASIC;
+- an optical claim receives one topology-matched device of each optical kind;
 - all resources in a strict worker share one NUMA attribute;
 - the worker's cgroup and memory policy match the allocation;
 - Slurm advertises no resource absent from the claim;

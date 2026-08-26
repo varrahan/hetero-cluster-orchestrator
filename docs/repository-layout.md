@@ -130,12 +130,12 @@ libraries:
 Requirements are pinned per workload. A Go module must not shell out to these
 sources as an internal API.
 
-### Phase 3 checkpoint modules
+### Shared and checkpoint modules
 
-`src/shared` owns only versioned checkpoint, optimizer, and atomic-ring wire
-contracts. `src/checkpoint-flusher` owns MinIO, hashing, commit, restore, and
-worker-local staging. `src/quantization-engine` owns bounded OpenTPU numeric
-conversion and has no storage credentials.
+`src/shared` owns versioned hardware-inventory, checkpoint, optimizer, and
+atomic-ring wire contracts. `src/checkpoint-flusher` owns MinIO, hashing,
+commit, restore, and worker-local staging. `src/quantization-engine` owns
+bounded OpenTPU numeric conversion and has no storage credentials.
 
 ### `src/watchdog-daemon`
 

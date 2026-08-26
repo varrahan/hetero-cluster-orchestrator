@@ -286,3 +286,16 @@ Design: [failure recovery](failure-recovery.md).
 - [x] `P5-G03` Rollback to the prior operator version preserves Slurm state,
   claims, checkpoints, and quarantines.
 - [x] `P5-G04` `make verify` succeeds and release documentation is current.
+
+## Post-release extensions
+
+- [x] `EXT-01` Add an independent optical DRA driver for node-local circuit
+  switch endpoints, CPO silicon photonics, and full-duplex adapter ASICs.
+- [x] `EXT-02` Publish decoupled `computeclass` and `opticalclass` DeviceClasses
+  with a topology-matched two-claim Pod example.
+- [x] `EXT-03` Enforce opt-in compute/optical claim pairing through native
+  admission policy and cover optical inventory and claim lifecycle behavior.
+- [x] `EXT-04` Add backward-compatible Lumentum and Coherent optical product
+  metadata, allocation profiles, selectors, and lifecycle coverage.
+- [x] `EXT-05` Add a disposable software-only optical DRA demonstration with
+  dual-claim, vendor inventory, preparation, and admission gates.
