@@ -1,0 +1,66 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: compute-claim
+spec:
+  devices:
+    requests:
+    - name: accelerator
+      exactly:
+        deviceClassName: computeclass
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: optical-claim
+spec:
+  devices:
+    requests:
+    - name: switch
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].kind == "switch"
+    - name: cpo
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].kind == "cpo-photonic"
+    - name: adapter
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].kind == "physical-asic"
+    constraints:
+    - requests: [switch, cpo, adapter]
+      matchAttribute: orchestration.optical.gputpu.io/topology
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dual-claim-workload
+  labels:
+    orchestration.gputpu.io/optical-required: "true"
+  annotations:
+    orchestration.gputpu.io/resource-claim: compute-claim
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    orchestration.gputpu.io/compute: "true"
+  resourceClaims:
+  - name: compute
+    resourceClaimName: compute-claim
+  - name: optical
+    resourceClaimName: optical-claim
+  containers:
+  - name: workload
+    image: orchestration-optical-dra:dev
+    imagePullPolicy: IfNotPresent
+    command: ["/bin/sh", "-c", "sleep infinity"]
+    resources:
+      claims:
+      - name: compute
+      - name: optical

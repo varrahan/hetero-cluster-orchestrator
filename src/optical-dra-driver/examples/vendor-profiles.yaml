@@ -1,0 +1,89 @@
+# Each switch entry is one allocatable R300 endpoint. Each ELSFP entry is one
+# allocatable laser output. Full chassis/module expansion remains external.
+apiVersion: v1
+kind: Node
+metadata:
+  name: replace-with-lumentum-node
+  annotations:
+    orchestration.gputpu.io/optical-topology-v1: |-
+      {
+        "version": 1,
+        "devices": [
+          {"kind":"switch","name":"r300-a-port-001","model":"R300","vendor":"Lumentum","partNumber":"R300","formFactor":"chassis-port","protocol":"any","managementInterface":"gNMI","sourceId":"r300-a","topology":"fabric-a","location":"r300-a/port-001","ports":1},
+          {"kind":"cpo-photonic","name":"elsfp-350-a-output-01","model":"ELSFP-350","vendor":"Lumentum","partNumber":"ELSFP-350","formFactor":"ELSFP","protocol":"any","componentRole":"external-laser-source","sourceId":"elsfp-350-a","topology":"fabric-a","location":"elsfp-350-a/output-01","wavelengthNm":1311,"outputPowerDbm":24},
+          {"kind":"physical-asic","name":"lumentum-osfp-01","model":"1.6T 2xDR4 TRO OSFP","vendor":"Lumentum","formFactor":"OSFP","protocol":"Ethernet","managementInterface":"CMIS-5.3","linkId":"link-001","topology":"fabric-a","location":"host-a/osfp-1","ports":1,"bandwidthGbps":1600,"lanes":8,"reachMeters":500,"fullDuplex":true}
+        ]
+      }
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: replace-with-mixed-node
+  annotations:
+    orchestration.gputpu.io/optical-topology-v1: |-
+      {
+        "version": 1,
+        "devices": [
+          {"kind":"switch","name":"r300-b-port-001","model":"R300","vendor":"Lumentum","partNumber":"R300","formFactor":"chassis-port","protocol":"any","managementInterface":"gNMI","sourceId":"r300-b","topology":"fabric-b","location":"r300-b/port-001","ports":1},
+          {"kind":"cpo-photonic","name":"elsfp-350-b-output-01","model":"ELSFP-350","vendor":"Lumentum","partNumber":"ELSFP-350","formFactor":"ELSFP","protocol":"any","componentRole":"external-laser-source","sourceId":"elsfp-350-b","topology":"fabric-b","location":"elsfp-350-b/output-01","wavelengthNm":1311,"outputPowerDbm":24},
+          {"kind":"physical-asic","name":"coherent-aoc-local-01","model":"C.wire","vendor":"Coherent","formFactor":"CXP","protocol":"any","componentRole":"active-optical-cable-endpoint","linkId":"aoc-link-001","topology":"fabric-b","location":"host-b/cxp-1","bandwidthGbps":150,"lanes":12,"fullDuplex":true}
+        ]
+      }
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: lumentum-optical-claim
+spec:
+  devices:
+    requests:
+    - name: switch
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].vendor == "lumentum" && device.attributes["orchestration.optical.gputpu.io"].partNumber == "R300"
+    - name: cpo
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].vendor == "lumentum" && device.attributes["orchestration.optical.gputpu.io"].partNumber == "ELSFP-350"
+    - name: adapter
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].vendor == "lumentum" && device.attributes["orchestration.optical.gputpu.io"].formFactor == "osfp"
+    constraints:
+    - requests: [switch, cpo, adapter]
+      matchAttribute: orchestration.optical.gputpu.io/topology
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: mixed-optical-claim
+spec:
+  devices:
+    requests:
+    - name: switch
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].vendor == "lumentum" && device.attributes["orchestration.optical.gputpu.io"].partNumber == "R300"
+    - name: cpo
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].vendor == "lumentum" && device.attributes["orchestration.optical.gputpu.io"].partNumber == "ELSFP-350"
+    - name: adapter
+      exactly:
+        deviceClassName: opticalclass
+        selectors:
+        - cel:
+            expression: device.attributes["orchestration.optical.gputpu.io"].vendor == "coherent" && device.attributes["orchestration.optical.gputpu.io"].componentRole == "active_optical_cable_endpoint"
+    constraints:
+    - requests: [switch, cpo, adapter]
+      matchAttribute: orchestration.optical.gputpu.io/topology
