@@ -107,7 +107,10 @@ allocates the slice before `slurmd` registers it with Slurm.
 `make verify` for the complete local verification suite. `make generate` and
 `make manifests` expose generation and Kustomize rendering without applying
 anything to a cluster. `make phase1-e2e` through `make phase4-e2e` run the
-disposable live kind gates.
+disposable live kind gates. `make demo` runs those gates cumulatively and
+retains a kind cluster named `demo` for inspection; delete it with
+`kind delete cluster --name demo` when finished. The optical extension remains
+available separately through `make optical-demo`.
 
 The design builds on Kubernetes
 [Dynamic Resource Allocation](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/),

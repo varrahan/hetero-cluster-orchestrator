@@ -18,7 +18,7 @@ SHELL_FILES := $(shell find test -type f -name '*.sh' -print 2>/dev/null)
 .PHONY: all build test generate manifests verify fmt fmt-check vet versions \
 	verify-versions manifests-check generated-check python-check python-test ring-lib json-check shell-check \
 	phase1-e2e phase2-e2e phase2-gpu-e2e phase3-e2e phase4-e2e \
-	phase5-e2e optical-demo examples-check release-manifests
+	phase5-e2e optical-demo demo examples-check release-manifests
 
 all: build
 
@@ -67,6 +67,11 @@ phase2-gpu-e2e:
 
 optical-demo:
 	./test/optical/e2e.sh
+
+demo:
+	@KIND_CLUSTER="$${KIND_CLUSTER:-demo}" KEEP_KIND=1 $(MAKE) phase4-e2e
+	@printf 'Demo cluster retained. Inspect: rtk kubectl -n slurm-system get pods,resourceclaims\n'
+	@printf 'Remove it: rtk kind delete cluster --name %s\n' "$${KIND_CLUSTER:-demo}"
 
 phase3-e2e:
 	./test/phase3/e2e.sh
